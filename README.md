@@ -31,6 +31,7 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 - BullMQ queue/worker definitions for imports and indexing, plus API rate limiting.
 - Deterministic conflict detection and derived extended-family relationships.
 - Browser upload endpoint with 8MB chunks, offset writes, resume-friendly metadata and a 2GB per-file limit.
+- Completed uploads automatically enqueue a BullMQ `imports` job; the browser polls `/api/import-jobs/:id` and displays processed-record progress.
 
 ## Phases
 

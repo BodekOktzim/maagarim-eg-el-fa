@@ -10,6 +10,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { rateLimit } from "../rate-limit";
 import { completeUpload, initUpload, removeUpload, writeChunk } from "../upload";
+import { enqueueImport, importJobStatus } from "../../workers/queues";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -46,9 +47,10 @@ async function startServer() {
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "chunk_upload_failed" }); }
   });
   app.post("/api/uploads/:id/complete", async (req, res) => {
-    try { res.status(201).json(await completeUpload(req.params.id)); }
+    try { const upload = await completeUpload(req.params.id); const job = await enqueueImport({ sourceId: upload.id, filePath: upload.path, format: upload.format, batchSize: 1000 }); res.status(201).json({ ...upload, jobId: job.id, importStatusUrl: `/api/import-jobs/${job.id}` }); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_incomplete" }); }
   });
+  app.get("/api/import-jobs/:id", async (req, res) => { const status = await importJobStatus(req.params.id); if (!status) { res.status(404).json({ error: "job_not_found" }); return; } res.json(status); });
   app.delete("/api/uploads/:id", async (req, res) => { await removeUpload(req.params.id); res.status(204).end(); });
   registerStorageProxy(app);
   registerOAuthRoutes(app);
