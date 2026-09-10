@@ -9,6 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { rateLimit } from "../rate-limit";
+import { completeUpload, initUpload, removeUpload, writeChunk } from "../upload";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,19 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120 }));
+  app.post("/api/uploads/init", express.json({ limit: "32kb" }), async (req, res) => {
+    try { const { fileName, size } = req.body as { fileName?: string; size?: number }; if (!fileName || size == null) { res.status(400).json({ error: "fileName and size are required" }); return; } res.status(201).json(await initUpload(fileName, size)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_init_failed" }); }
+  });
+  app.put("/api/uploads/:id/chunks/:index", express.raw({ type: "application/octet-stream", limit: "9mb" }), async (req, res) => {
+    try { const result = await writeChunk(req.params.id, Number(req.params.index), req.body as Buffer); res.json(result); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "chunk_upload_failed" }); }
+  });
+  app.post("/api/uploads/:id/complete", async (req, res) => {
+    try { res.status(201).json(await completeUpload(req.params.id)); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_incomplete" }); }
+  });
+  app.delete("/api/uploads/:id", async (req, res) => { await removeUpload(req.params.id); res.status(204).end(); });
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   // tRPC API

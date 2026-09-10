@@ -30,6 +30,7 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 - Streaming parsers for CSV, JSON, JSONL, XLSX, ZIP and GZIP inputs, with resumable batch checkpoints.
 - BullMQ queue/worker definitions for imports and indexing, plus API rate limiting.
 - Deterministic conflict detection and derived extended-family relationships.
+- Browser upload endpoint with 8MB chunks, offset writes, resume-friendly metadata and a 2GB per-file limit.
 
 ## Phases
 
@@ -51,3 +52,5 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 This session provides a managed WebDev database/runtime rather than a local Docker daemon, so local Docker execution and PostgreSQL migration execution cannot be performed inside the sandbox. The compose definition, environment contract, streaming implementation and bounded query APIs are included for deployment/CI verification.
 
 `pnpm benchmark:stream` runs a bounded-memory synthetic benchmark. It does not create a 5GB file by default; set `BENCHMARK_RECORDS` explicitly for a controlled larger run.
+
+Browser uploads are written to `UPLOAD_TMP_DIR` (default `/tmp/synthetic-data-lab-uploads`) and are ready for the import worker after completion. Use persistent object storage or a persistent volume in production; do not rely on ephemeral `/tmp` across autoscale instances.
