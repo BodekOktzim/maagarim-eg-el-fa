@@ -24,6 +24,7 @@ describe("synthetic intelligence domain", () => {
     expect(searchIndex(index, "100000003", "national_id").items[0]?.firstName).toBe("יוסי");
     expect(searchIndex(index, "0501234567", "phone").items[0]?.firstName).toBe("יוסי");
     expect(searchIndex(index, "כהן", "name", 1, 2).items).toHaveLength(2);
+    expect(searchIndex(index, "יוסי|הרצל 10", "name_address").items[0]?.firstName).toBe("יוסי");
   });
   it("streams records in bounded batches", async () => {
     const batches: number[] = []; for await (const batch of streamRecords(demoRecords, 2)) batches.push(batch.length);

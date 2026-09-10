@@ -26,6 +26,10 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 - Allowlisted AI orchestration over deterministic tools; no arbitrary SQL or external lookup.
 - Truecaller adapter is present but disabled; no scraping is implemented.
 - Audit events for searches and visible DEMO MODE banner.
+- PostgreSQL migration SQL for people, raw records, sources, relationships, conflicts, imports and audit logs.
+- Streaming parsers for CSV, JSON, JSONL, XLSX, ZIP and GZIP inputs, with resumable batch checkpoints.
+- BullMQ queue/worker definitions for imports and indexing, plus API rate limiting.
+- Deterministic conflict detection and derived extended-family relationships.
 
 ## Phases
 
@@ -45,3 +49,5 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 ## Important limitation
 
 This session provides a managed WebDev database/runtime rather than a local Docker daemon, so local Docker execution and PostgreSQL migration execution cannot be performed inside the sandbox. The compose definition, environment contract, streaming implementation and bounded query APIs are included for deployment/CI verification.
+
+`pnpm benchmark:stream` runs a bounded-memory synthetic benchmark. It does not create a 5GB file by default; set `BENCHMARK_RECORDS` explicitly for a controlled larger run.

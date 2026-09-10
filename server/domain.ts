@@ -1,6 +1,6 @@
 export type Confidence = "VERIFIED" | "HIGH_CONFIDENCE" | "POSSIBLE" | "CONFLICT" | "UNKNOWN";
 export type RelationshipType = "PARENT" | "CHILD" | "SIBLING";
-export type SearchType = "national_id" | "phone" | "name" | "address";
+export type SearchType = "national_id" | "phone" | "name" | "address" | "name_address";
 
 export type SyntheticRecord = {
   source: string;
@@ -95,8 +95,9 @@ export function buildIndex(records = demoRecords) {
 }
 
 export function searchIndex(index: ReturnType<typeof buildIndex>, query: string, type: SearchType, page = 1, pageSize = 20) {
+  const [nameQuery, addressQuery] = query.split("|").map((part) => part.trim());
   const q = type === "national_id" ? normalizeNationalId(query) : type === "phone" ? normalizePhone(query) : type === "address" ? normalizeAddress(query) : normalizeText(query);
-  const matching = index.people.filter((p) => type === "national_id" ? p.nationalId === q : type === "phone" ? p.phone === q : type === "address" ? p.address?.includes(q) : normalizeText(p.fullName).includes(q));
+  const matching = index.people.filter((p) => type === "national_id" ? p.nationalId === q : type === "phone" ? p.phone === q : type === "address" ? p.address?.includes(q) : type === "name_address" ? normalizeText(p.fullName).includes(normalizeText(nameQuery ?? "")) && p.address?.includes(normalizeAddress(addressQuery ?? "")) : normalizeText(p.fullName).includes(q));
   return { items: matching.slice((page - 1) * pageSize, page * pageSize), total: matching.length, page, pageSize };
 }
 

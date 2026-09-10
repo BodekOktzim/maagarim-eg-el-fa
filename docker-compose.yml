@@ -19,5 +19,12 @@ services:
       FACEBOOK_DEMO_ENABLED: "true"
     depends_on: [postgres, redis]
     ports: ["3000:3000"]
+  worker:
+    build: .
+    command: ["node", "dist/worker.js"]
+    environment:
+      DATABASE_URL: postgresql://synthetic:synthetic_dev_only@postgres:5432/synthetic_lab
+      REDIS_URL: redis://redis:6379
+    depends_on: [postgres, redis]
 volumes:
   postgres_data:
