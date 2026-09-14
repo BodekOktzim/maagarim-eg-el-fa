@@ -11,6 +11,7 @@ import { serveStatic, setupVite } from "./vite";
 import { rateLimit } from "../rate-limit";
 import { completeUpload, initUpload, removeUpload, writeChunk } from "../upload";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
+import { requireUploadAccessCode } from "../upload-access";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -38,6 +39,8 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120 }));
+  app.use("/api/uploads", requireUploadAccessCode);
+  app.use("/api/import-jobs", requireUploadAccessCode);
   app.post("/api/uploads/init", express.json({ limit: "32kb" }), async (req, res) => {
     try { const { fileName, size } = req.body as { fileName?: string; size?: number }; if (!fileName || size == null) { res.status(400).json({ error: "fileName and size are required" }); return; } res.status(201).json(await initUpload(fileName, size)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_init_failed" }); }

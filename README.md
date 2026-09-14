@@ -34,6 +34,7 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 - Completed uploads automatically enqueue a BullMQ `imports` job; the browser polls `/api/import-jobs/:id` and displays processed-record progress.
 - TXT files are parsed as streaming delimited text with automatic comma, tab, pipe, or semicolon detection.
 - Imported records are persisted in PostgreSQL `raw_records` with a stable `(source_id, external_record_id)` uniqueness key, so searching does not require uploading the source again.
+- Browser uploads require the server-side `UPLOAD_ACCESS_CODE` (default development value: `8568`) on init, chunk, completion, and job-status requests. Set a different deployment secret in production.
 
 ## Phases
 
