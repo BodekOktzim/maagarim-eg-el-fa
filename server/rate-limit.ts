@@ -1,11 +1,12 @@
 import type { Request, Response, NextFunction } from "express";
 
 type Bucket = { count: number; resetAt: number };
-export function rateLimit(options: { windowMs?: number; max?: number } = {}) {
+export function rateLimit(options: { windowMs?: number; max?: number; skip?: (req: Request) => boolean } = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? 120;
   const buckets = new Map<string, Bucket>();
   return (req: Request, res: Response, next: NextFunction) => {
+    if (options.skip?.(req)) { next(); return; }
     const key = String(req.ip ?? req.headers["x-forwarded-for"] ?? "unknown");
     const now = Date.now();
     const current = buckets.get(key);

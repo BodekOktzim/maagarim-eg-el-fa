@@ -1,7 +1,7 @@
 import { Queue, Worker, type Job } from "bullmq";
 import IORedis from "ioredis";
 
-export type ImportJob = { sourceId: string; filePath: string; format: "csv" | "txt" | "json" | "jsonl" | "xlsx" | "zip" | "gzip"; batchSize?: number };
+export type ImportJob = { sourceId: string; filePath: string; format: "csv" | "tsv" | "txt" | "json" | "jsonl" | "ndjson" | "xlsx" | "xls" | "ods" | "zip" | "gzip"; innerFormat?: "csv" | "tsv" | "txt" | "json" | "jsonl" | "ndjson" | "xlsx" | "xls" | "ods"; batchSize?: number };
 export type IndexJob = { personIds: string[] };
 let sharedConnection: IORedis | undefined;
 let sharedQueues: ReturnType<typeof createQueues> | undefined;
