@@ -5,13 +5,13 @@ import crypto from "node:crypto";
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 export const CHUNK_BYTES = 8 * 1024 * 1024;
 const ROOT = process.env.UPLOAD_TMP_DIR ?? "/tmp/synthetic-data-lab-uploads";
-const allowed = new Set(["csv", "json", "jsonl", "xlsx", "zip", "gz", "gzip"]);
+const allowed = new Set(["csv", "txt", "json", "jsonl", "xlsx", "zip", "gz", "gzip"]);
 
 export type UploadMeta = { id: string; fileName: string; size: number; chunkSize: number; totalChunks: number; received: number[]; createdAt: number };
 function metaPath(id: string) { return path.join(ROOT, `${id}.json`); }
 function filePath(id: string) { return path.join(ROOT, `${id}.partial`); }
 function safeName(name: string) { return path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 180) || "upload.bin"; }
-function formatFromName(name: string) { const ext = name.toLowerCase().split(".").pop() ?? ""; if (ext === "gz") return "gzip"; if (!allowed.has(ext)) throw new Error("Unsupported file type"); return ext as "csv" | "json" | "jsonl" | "xlsx" | "zip" | "gzip"; }
+function formatFromName(name: string) { const ext = name.toLowerCase().split(".").pop() ?? ""; if (ext === "gz") return "gzip"; if (!allowed.has(ext)) throw new Error("Unsupported file type"); return ext as "csv" | "txt" | "json" | "jsonl" | "xlsx" | "zip" | "gzip"; }
 async function load(id: string): Promise<UploadMeta> { return JSON.parse(await fs.readFile(metaPath(id), "utf8")) as UploadMeta; }
 async function save(meta: UploadMeta) { await fs.writeFile(metaPath(meta.id), JSON.stringify(meta), "utf8"); }
 

@@ -32,6 +32,8 @@ The managed WebDev environment supplies the authenticated database/runtime. For 
 - Deterministic conflict detection and derived extended-family relationships.
 - Browser upload endpoint with 8MB chunks, offset writes, resume-friendly metadata and a 2GB per-file limit.
 - Completed uploads automatically enqueue a BullMQ `imports` job; the browser polls `/api/import-jobs/:id` and displays processed-record progress.
+- TXT files are parsed as streaming delimited text with automatic comma, tab, pipe, or semicolon detection.
+- Imported records are persisted in PostgreSQL `raw_records` with a stable `(source_id, external_record_id)` uniqueness key, so searching does not require uploading the source again.
 
 ## Phases
 
