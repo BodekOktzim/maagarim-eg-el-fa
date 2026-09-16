@@ -10,6 +10,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { rateLimit } from "../rate-limit";
 import { completeUpload, getUpload, initUpload, removeUpload, writeChunk } from "../upload";
+import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 
@@ -54,7 +55,14 @@ async function startServer() {
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "chunk_upload_failed" }); }
   });
   app.post("/api/uploads/:id/complete", async (req, res) => {
-    try { const upload = await completeUpload(req.params.id); const job = await enqueueImport({ sourceId: upload.id, filePath: upload.path, format: upload.format, innerFormat: upload.innerFormat, batchSize: 1000 }); res.status(201).json({ ...upload, jobId: job.id, importStatusUrl: `/api/import-jobs/${job.id}` }); }
+    try {
+      if (!isPCloudConfigured()) throw new Error("pCloud storage is not configured on the server");
+      const upload = await completeUpload(req.params.id);
+      const remote = await uploadFileToPCloud(upload.path, upload.fileName);
+      const job = await enqueueImport({ sourceId: upload.id, format: upload.format, innerFormat: upload.innerFormat, storage: { provider: "pcloud", fileId: remote.fileid, fileName: remote.name, size: remote.size }, batchSize: 1000 });
+      await removeUpload(upload.id);
+      res.status(201).json({ id: upload.id, fileName: upload.fileName, size: upload.size, format: upload.format, storage: "pcloud", jobId: job.id, importStatusUrl: `/api/import-jobs/${job.id}` });
+    }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_incomplete" }); }
   });
   app.get("/api/import-jobs/:id", async (req, res) => { const status = await importJobStatus(req.params.id); if (!status) { res.status(404).json({ error: "job_not_found" }); return; } res.json(status); });

@@ -57,6 +57,8 @@ This session provides a managed WebDev database/runtime rather than a local Dock
 
 `pnpm benchmark:stream` runs a bounded-memory synthetic benchmark. It does not create a 5GB file by default; set `BENCHMARK_RECORDS` explicitly for a controlled larger run.
 
-Browser uploads are written to `UPLOAD_TMP_DIR` (default `/tmp/synthetic-data-lab-uploads`) and are ready for the import worker after completion. The browser sends up to four 8MB chunks in parallel and stores resumable upload metadata locally, so a refresh or transient network failure does not require starting over. Use persistent object storage or a persistent volume in production; do not rely on ephemeral `/tmp` across autoscale instances.
+Browser uploads are written temporarily to `UPLOAD_TMP_DIR` (default `/tmp/synthetic-data-lab-uploads`), then uploaded server-to-server to pCloud before the BullMQ import job is created. The browser sends up to four 8MB chunks in parallel and stores resumable upload metadata locally, so a refresh or transient network failure does not require starting over. The worker downloads the pCloud object to `IMPORT_TMP_DIR`, imports it in a stream, and removes the worker-local copy afterward.
+
+Set `PCLOUD_ACCESS_TOKEN` as a server-side secret, `PCLOUD_API_HOST` to `https://eapi.pcloud.com` for European accounts or `https://api.pcloud.com` for US accounts, and optionally `PCLOUD_FOLDER_ID` for the target pCloud folder. Never expose the token to the browser or commit it to Git. The pCloud account must have enough free quota for the uploaded files.
 
 The importer cannot safely interpret literally every binary format. It accepts the supported data formats above, and rejects unknown extensions before transfer; ZIP archives may contain multiple supported data files and GZIP files use the inner filename extension when available.
