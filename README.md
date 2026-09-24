@@ -66,3 +66,7 @@ The importer cannot safely interpret literally every binary format. It accepts t
 ## Visual relationship search
 
 The browser interface provides responsive Hebrew-first search by national ID, phone, name, and address. Selecting a verified person opens a source-backed visual family tree with parents, siblings, grandparents, extended-family branches when the required identifiers are available, provenance badges, and mobile-friendly horizontal tree navigation.
+
+## Search modes and data boundary
+
+The search screen first requires selecting a search mode: national ID, phone number, Facebook identifier, or multi-field name search. Name search accepts any non-empty combination of first name, last name, city, and age; an empty submission is blocked in the browser and server contract. Raw source files containing personal identifiers are intentionally not committed to the public GitHub repository. They must be loaded through private server storage or a protected database connection, with only schemas, parsers, and synthetic fixtures kept in Git.

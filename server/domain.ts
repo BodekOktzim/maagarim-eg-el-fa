@@ -1,11 +1,13 @@
 export type Confidence = "VERIFIED" | "HIGH_CONFIDENCE" | "POSSIBLE" | "CONFLICT" | "UNKNOWN";
 export type RelationshipType = "PARENT" | "CHILD" | "SIBLING";
-export type SearchType = "national_id" | "phone" | "name" | "address" | "name_address";
+export type SearchType = "national_id" | "phone" | "facebook_id" | "name" | "address" | "name_address";
+export type NameSearchFilters = { firstName?: string; lastName?: string; city?: string; age?: number };
 
 export type SyntheticRecord = {
   source: string;
   externalId: string;
   nationalId?: string;
+  facebookId?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -19,11 +21,13 @@ export type SyntheticRecord = {
 export type Person = {
   id: string;
   nationalId?: string;
+  facebookId?: string;
   firstName: string;
   lastName: string;
   fullName: string;
   phone?: string;
   address?: string;
+  city?: string;
   birthDate?: string;
   sourceNames: string[];
   rawRecordIds: string[];
@@ -48,6 +52,7 @@ export const normalizePhone = (value: string) => {
 };
 export const normalizeText = (value: string) => value.trim().toLocaleLowerCase("he").replace(/[׳'".,]/g, "").replace(/\s+/g, " ");
 export const normalizeAddress = (value: string) => normalizeText(value).replace(/^רחוב\s+/, "");
+export const ageFromBirthDate = (birthDate?: string) => birthDate ? Math.max(0, new Date().getFullYear() - Number(birthDate.slice(0, 4)) - (new Date().toISOString().slice(5, 10) < birthDate.slice(5, 10) ? 1 : 0)) : undefined;
 
 export const demoRecords: SyntheticRecord[] = [
   { source: "DB_2006", externalId: "2006-001", nationalId: "100000001", firstName: "אבי", lastName: "כהן", phone: "050-1111111", address: "הרצל 10", birthDate: "1955-03-12", payload: { tz: "100000001", fname: "אבי", lname: "כהן", phone: "050-1111111", address: "הרצל 10" } },
@@ -66,7 +71,7 @@ export function buildIndex(records = demoRecords) {
     const nid = record.nationalId ? normalizeNationalId(record.nationalId) : undefined;
     let person = nid ? byNationalId.get(nid) : undefined;
     if (!person) {
-      person = { id: `person-${nid ?? people.length + 1}`, nationalId: nid, firstName: record.firstName ?? "", lastName: record.lastName ?? "", fullName: `${record.firstName ?? ""} ${record.lastName ?? ""}`.trim(), phone: record.phone ? normalizePhone(record.phone) : undefined, address: record.address ? normalizeAddress(record.address) : undefined, birthDate: record.birthDate, sourceNames: [], rawRecordIds: [] };
+      person = { id: `person-${nid ?? people.length + 1}`, nationalId: nid, facebookId: record.facebookId ?? (typeof record.payload.facebookId === "string" ? record.payload.facebookId : typeof record.payload.id === "string" && record.source.includes("FACEBOOK") ? record.payload.id : undefined), firstName: record.firstName ?? "", lastName: record.lastName ?? "", fullName: `${record.firstName ?? ""} ${record.lastName ?? ""}`.trim(), phone: record.phone ? normalizePhone(record.phone) : undefined, address: record.address ? normalizeAddress(record.address) : undefined, city: typeof record.payload.city === "string" ? normalizeText(record.payload.city) : undefined, birthDate: record.birthDate, sourceNames: [], rawRecordIds: [] };
       people.push(person);
       if (nid) byNationalId.set(nid, person);
     }
@@ -94,10 +99,10 @@ export function buildIndex(records = demoRecords) {
   return { people, rawRecords, relationships, byNationalId };
 }
 
-export function searchIndex(index: ReturnType<typeof buildIndex>, query: string, type: SearchType, page = 1, pageSize = 20) {
+export function searchIndex(index: ReturnType<typeof buildIndex>, query: string, type: SearchType, page = 1, pageSize = 20, filters: NameSearchFilters = {}) {
   const [nameQuery, addressQuery] = query.split("|").map((part) => part.trim());
-  const q = type === "national_id" ? normalizeNationalId(query) : type === "phone" ? normalizePhone(query) : type === "address" ? normalizeAddress(query) : normalizeText(query);
-  const matching = index.people.filter((p) => type === "national_id" ? p.nationalId === q : type === "phone" ? p.phone === q : type === "address" ? p.address?.includes(q) : type === "name_address" ? normalizeText(p.fullName).includes(normalizeText(nameQuery ?? "")) && p.address?.includes(normalizeAddress(addressQuery ?? "")) : normalizeText(p.fullName).includes(q));
+  const q = type === "national_id" ? normalizeNationalId(query) : type === "phone" ? normalizePhone(query) : type === "facebook_id" ? normalizeText(query) : type === "address" ? normalizeAddress(query) : normalizeText(query);
+  const matching = index.people.filter((p) => type === "national_id" ? p.nationalId === q : type === "phone" ? p.phone === q : type === "facebook_id" ? normalizeText(p.facebookId ?? "") === q : type === "address" ? p.address?.includes(q) : type === "name_address" ? normalizeText(p.fullName).includes(normalizeText(nameQuery ?? "")) && p.address?.includes(normalizeAddress(addressQuery ?? "")) : filters.firstName || filters.lastName || filters.city || filters.age ? (!filters.firstName || normalizeText(p.firstName).includes(normalizeText(filters.firstName))) && (!filters.lastName || normalizeText(p.lastName).includes(normalizeText(filters.lastName))) && (!filters.city || normalizeText(p.city ?? p.address ?? "").includes(normalizeText(filters.city))) && (!filters.age || ageFromBirthDate(p.birthDate) === filters.age) : normalizeText(p.fullName).includes(q));
   return { items: matching.slice((page - 1) * pageSize, page * pageSize), total: matching.length, page, pageSize };
 }
 

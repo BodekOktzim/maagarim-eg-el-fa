@@ -28,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 const demoQueries = [
   { label: "ת״ז לדוגמה", value: "100000003", type: "national_id" as const },
   { label: "טלפון לדוגמה", value: "050-1234567", type: "phone" as const },
+  { label: "פייסבוק לדוגמה", value: "fb-003", type: "facebook_id" as const },
   { label: "שם", value: "יוסי", type: "name" as const },
 ];
 const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
@@ -39,6 +40,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type UploadState = { name: string; size: number; progress: number; status: string; resumable?: boolean };
 type UploadMeta = { id: string; fileName: string; size: number; chunkSize: number; totalChunks: number; received: number[] };
 type SavedUpload = { id: string; fileName: string; size: number; lastModified: number };
+type SearchMode = "national_id" | "phone" | "facebook_id" | "name";
 
 async function responseError(response: Response, fallback: string) {
   try { const body = await response.json() as { error?: string }; return body.error ?? fallback; }
@@ -50,12 +52,15 @@ function detectType(value: string) {
   const digits = trimmed.replace(/\D/g, "");
   if (/^\d{5,9}$/.test(digits) && digits.length === trimmed.length) return "national_id" as const;
   if (/^[+\d\- ()]+$/.test(trimmed) && digits.length >= 7) return "phone" as const;
-  return trimmed.includes(" ") ? "name" as const : "name" as const;
+  return "name" as const;
 }
 
 export default function Home() {
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<"national_id" | "phone" | "name" | "address">("national_id");
+  const [mode, setMode] = useState<SearchMode | null>(null);
+  const [type, setType] = useState<"national_id" | "phone" | "facebook_id" | "name">("national_id");
+  const [nameFields, setNameFields] = useState({ firstName: "", lastName: "", city: "", age: "" });
+  const [searchRequest, setSearchRequest] = useState<{ query: string; type: "national_id" | "phone" | "facebook_id" | "name"; firstName?: string; lastName?: string; city?: string; age?: number } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState("");
   const [upload, setUpload] = useState<UploadState | null>(null);
@@ -63,8 +68,8 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dashboard = trpc.dashboard.useQuery();
-  const searchInput = useMemo(() => ({ query, type, page: 1, pageSize: 30 }), [query, type]);
-  const results = trpc.search.useQuery(searchInput, { enabled: query.trim().length > 0 });
+  const searchInput = useMemo(() => searchRequest ?? ({ query: "", type: "national_id" as const, page: 1, pageSize: 30 }), [searchRequest]);
+  const results = trpc.search.useQuery(searchInput, { enabled: Boolean(searchRequest) });
   const personInput = useMemo(() => ({ id: selected ?? "" }), [selected]);
   const familyInput = useMemo(() => ({ id: selected ?? "", depth: 3 as const }), [selected]);
   const person = trpc.person.useQuery(personInput, { enabled: Boolean(selected) });
@@ -73,10 +78,20 @@ export default function Home() {
   const importMutation = trpc.import.useMutation();
   const ai = trpc.ai.useMutation();
 
-  const runSearch = (value = query, forcedType?: typeof type) => {
-    const nextType = forcedType ?? detectType(value);
+  const chooseSearchMode = (nextMode: SearchMode) => { setMode(nextMode); setType(nextMode); setQuery(""); setSearchRequest(null); };
+  const runSearch = (value = query, forcedType?: "national_id" | "phone" | "facebook_id") => {
+    const nextType = forcedType ?? (type === "name" ? "name" : detectType(value));
+    if (!value.trim()) return;
     setQuery(value);
-    setType(nextType);
+    setSearchRequest({ query: value.trim(), type: nextType });
+  };
+  const runNameSearch = () => {
+    const firstName = nameFields.firstName.trim() || undefined;
+    const lastName = nameFields.lastName.trim() || undefined;
+    const city = nameFields.city.trim() || undefined;
+    const age = nameFields.age.trim() ? Number(nameFields.age) : undefined;
+    if (!firstName && !lastName && !city && age === undefined) return;
+    setSearchRequest({ query: "", type: "name", firstName, lastName, city, age });
   };
 
   const uploadChunk = async (meta: UploadMeta, file: File, index: number, code: string) => {
@@ -188,15 +203,8 @@ export default function Home() {
           <div className="max-w-2xl"><div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/80"><GitBranch size={14}/> חיפוש מאוחד</div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">מצא את האדם. ראה את הקשרים.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-white/65 sm:text-base">חיפוש לפי תעודת זהות, טלפון, שם או כתובת — עם עץ משפחה ויזואלי שמבוסס רק על קשרים מאומתים.</p></div>
           <div className="hidden rounded-2xl border border-white/10 bg-white/5 p-4 sm:block"><ShieldCheck className="text-fuchsia-200" size={30}/><p className="mt-2 text-xs text-white/55">Zero Hallucination<br/>Source-backed only</p></div>
         </div>
-        <div className="mt-7 flex flex-col gap-3 lg:flex-row">
-          <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><Input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder="הקלד ת״ז, טלפון, שם או כתובת" className="h-14 border-0 bg-white pr-12 text-base text-slate-900 placeholder:text-slate-400"/></div>
-          <Button onClick={() => runSearch()} className="h-14 bg-[#f2a9d2] px-7 text-[#30123e] hover:bg-[#f7c2e0]"><Search size={17} className="ml-2"/> חיפוש</Button>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="ml-1 text-xs text-white/45">סוג חיפוש:</span>
-          {([ ["national_id", "תעודת זהות"], ["phone", "טלפון"], ["name", "שם"], ["address", "כתובת"] ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setType(value)} className={`rounded-full px-3 py-1.5 text-xs transition ${type === value ? "bg-white text-[#30123e]" : "bg-white/10 text-white/65 hover:bg-white/15"}`}>{label}</button>)}
-        </div>
-        <div className="mt-5 flex flex-wrap gap-2">{demoQueries.map((item) => <button key={item.value} type="button" onClick={() => runSearch(item.value, item.type)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65 transition hover:bg-white/15">{item.label}: {item.value}</button>)}</div>
+        {!mode ? <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.06] p-5"><p className="text-sm font-semibold text-white">בחר איך לחפש</p><p className="mt-1 text-xs text-white/55">שורת החיפוש תיפתח רק אחרי בחירת סוג מזהה.</p><div className="mt-4 grid gap-2 sm:grid-cols-4">{([ ["national_id", "תעודת זהות"], ["phone", "מספר טלפון"], ["facebook_id", "מזהה Facebook"], ["name", "חיפוש לפי שם"] ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => chooseSearchMode(value)} className="rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-sm text-white/80 transition hover:border-fuchsia-200/60 hover:bg-white/15">{label}</button>)}</div></div> : <div className="mt-7 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-white">{mode === "national_id" ? "חיפוש לפי תעודת זהות" : mode === "phone" ? "חיפוש לפי מספר טלפון" : mode === "facebook_id" ? "חיפוש לפי מזהה Facebook" : "חיפוש לפי פרטים"}</p><button type="button" onClick={() => { setMode(null); setSearchRequest(null); }} className="text-xs text-white/60 underline hover:text-white">שנה סוג חיפוש</button></div>{mode === "name" ? <div className="grid gap-3 sm:grid-cols-2"><Input value={nameFields.firstName} onChange={(e) => setNameFields({ ...nameFields, firstName: e.target.value })} placeholder="שם פרטי" className="h-12 border-white/10 bg-white text-slate-900"/><Input value={nameFields.lastName} onChange={(e) => setNameFields({ ...nameFields, lastName: e.target.value })} placeholder="שם משפחה" className="h-12 border-white/10 bg-white text-slate-900"/><Input value={nameFields.city} onChange={(e) => setNameFields({ ...nameFields, city: e.target.value })} placeholder="עיר" className="h-12 border-white/10 bg-white text-slate-900"/><Input value={nameFields.age} onChange={(e) => setNameFields({ ...nameFields, age: e.target.value.replace(/\D/g, "") })} inputMode="numeric" placeholder="גיל" className="h-12 border-white/10 bg-white text-slate-900"/><p className="text-xs text-white/55 sm:col-span-2">אפשר למלא שדה אחד או יותר. חייב להיות לפחות ערך אחד.</p><Button onClick={runNameSearch} disabled={!nameFields.firstName.trim() && !nameFields.lastName.trim() && !nameFields.city.trim() && !nameFields.age.trim()} className="h-12 bg-[#f2a9d2] text-[#30123e] hover:bg-[#f7c2e0] sm:col-span-2"><Search size={17} className="ml-2"/> חיפוש לפי הפרטים</Button></div> : <div className="flex flex-col gap-3 sm:flex-row"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><Input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder={mode === "national_id" ? "הקלד תעודת זהות" : mode === "phone" ? "הקלד מספר טלפון" : "הקלד מזהה Facebook"} className="h-14 border-0 bg-white pr-12 text-base text-slate-900 placeholder:text-slate-400"/></div><Button onClick={() => runSearch(query, mode)} disabled={!query.trim()} className="h-14 bg-[#f2a9d2] px-7 text-[#30123e] hover:bg-[#f7c2e0]"><Search size={17} className="ml-2"/> חיפוש</Button></div>}</div>}
+        <div className="mt-5 flex flex-wrap gap-2">{mode && demoQueries.filter((item) => item.type === mode || mode === "name" && item.type === "name").map((item) => <button key={item.value} type="button" onClick={() => item.type === "name" ? setNameFields({ ...nameFields, firstName: "יוסי" }) : runSearch(item.value, item.type)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65 transition hover:bg-white/15">{item.label}: {item.value}</button>)}</div>
       </section>
 
       {results.data && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
