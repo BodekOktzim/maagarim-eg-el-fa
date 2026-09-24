@@ -62,3 +62,7 @@ Browser uploads are written temporarily to `UPLOAD_TMP_DIR` (default `/tmp/synth
 Set `PCLOUD_ACCESS_TOKEN` as a server-side secret, `PCLOUD_API_HOST` to `https://eapi.pcloud.com` for European accounts or `https://api.pcloud.com` for US accounts, and optionally `PCLOUD_FOLDER_ID` for the target pCloud folder. Never expose the token to the browser or commit it to Git. The pCloud account must have enough free quota for the uploaded files.
 
 The importer cannot safely interpret literally every binary format. It accepts the supported data formats above, and rejects unknown extensions before transfer; ZIP archives may contain multiple supported data files and GZIP files use the inner filename extension when available.
+
+## Visual relationship search
+
+The browser interface provides responsive Hebrew-first search by national ID, phone, name, and address. Selecting a verified person opens a source-backed visual family tree with parents, siblings, grandparents, extended-family branches when the required identifiers are available, provenance badges, and mobile-friendly horizontal tree navigation.

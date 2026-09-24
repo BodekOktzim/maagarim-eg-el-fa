@@ -1,13 +1,35 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Search, Database, Network, ShieldCheck, Upload, Sparkles, Activity, ChevronRight, X, FileUp, RefreshCw } from "lucide-react";
+import FamilyTree from "@/components/FamilyTree";
+import {
+  Activity,
+  BadgeCheck,
+  Database,
+  FileUp,
+  GitBranch,
+  MapPin,
+  Network,
+  Phone,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Upload,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
-const demoQueries = ["100000003", "050-1234567", "יוסי", "הרצל 10"];
+const demoQueries = [
+  { label: "ת״ז לדוגמה", value: "100000003", type: "national_id" as const },
+  { label: "טלפון לדוגמה", value: "050-1234567", type: "phone" as const },
+  { label: "שם", value: "יוסי", type: "name" as const },
+];
 const MAX_UPLOAD_BYTES = 2 * 1024 ** 3;
 const PARALLEL_UPLOADS = 4;
 const RESUME_STORAGE_KEY = "maagarim-upload-resume";
@@ -23,6 +45,14 @@ async function responseError(response: Response, fallback: string) {
   catch { return fallback; }
 }
 
+function detectType(value: string) {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (/^\d{5,9}$/.test(digits) && digits.length === trimmed.length) return "national_id" as const;
+  if (/^[+\d\- ()]+$/.test(trimmed) && digits.length >= 7) return "phone" as const;
+  return trimmed.includes(" ") ? "name" as const : "name" as const;
+}
+
 export default function Home() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"national_id" | "phone" | "name" | "address">("national_id");
@@ -33,19 +63,20 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dashboard = trpc.dashboard.useQuery();
-  const results = trpc.search.useQuery({ query, type }, { enabled: query.length > 0 });
-  const person = trpc.person.useQuery({ id: selected ?? "" }, { enabled: Boolean(selected) });
-  const family = trpc.family.useQuery({ id: selected ?? "", depth: 2 }, { enabled: Boolean(selected) });
+  const searchInput = useMemo(() => ({ query, type, page: 1, pageSize: 30 }), [query, type]);
+  const results = trpc.search.useQuery(searchInput, { enabled: query.trim().length > 0 });
+  const personInput = useMemo(() => ({ id: selected ?? "" }), [selected]);
+  const familyInput = useMemo(() => ({ id: selected ?? "", depth: 3 as const }), [selected]);
+  const person = trpc.person.useQuery(personInput, { enabled: Boolean(selected) });
+  const family = trpc.family.useQuery(familyInput, { enabled: Boolean(selected) });
   const sources = trpc.sources.useQuery();
   const importMutation = trpc.import.useMutation();
   const ai = trpc.ai.useMutation();
 
-  const runSearch = (value = query) => {
+  const runSearch = (value = query, forcedType?: typeof type) => {
+    const nextType = forcedType ?? detectType(value);
     setQuery(value);
-    if (value === "100000003") setType("national_id");
-    else if (/\d/.test(value)) setType("phone");
-    else if (value.includes("הרצל")) setType("address");
-    else setType("name");
+    setType(nextType);
   };
 
   const uploadChunk = async (meta: UploadMeta, file: File, index: number, code: string) => {
@@ -70,19 +101,19 @@ export default function Home() {
 
   const uploadFile = async (file: File) => {
     if (!uploadCode) {
-      setUpload({ name: file.name, size: file.size, progress: 0, status: "Enter the upload access code first" });
+      setUpload({ name: file.name, size: file.size, progress: 0, status: "יש להזין קוד העלאה" });
       return;
     }
     if (file.size === 0) {
-      setUpload({ name: file.name, size: file.size, progress: 0, status: "Empty files cannot be imported" });
+      setUpload({ name: file.name, size: file.size, progress: 0, status: "לא ניתן לייבא קובץ ריק" });
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setUpload({ name: file.name, size: file.size, progress: 0, status: "File exceeds the 2GB limit" });
+      setUpload({ name: file.name, size: file.size, progress: 0, status: "הקובץ גדול ממגבלת 2GB" });
       return;
     }
 
-    setUpload({ name: file.name, size: file.size, progress: 0, status: "Checking for a resumable upload…", resumable: false });
+    setUpload({ name: file.name, size: file.size, progress: 0, status: "בודק אם קיימת העלאה שניתן להמשיך…", resumable: false });
     try {
       const headers = { "Content-Type": "application/json", "x-upload-code": uploadCode };
       let meta: UploadMeta | null = null;
@@ -102,14 +133,14 @@ export default function Home() {
       const received = new Set(meta.received ?? []);
       const pending = Array.from({ length: meta.totalChunks }, (_, index) => index).filter((index) => !received.has(index));
       let uploadedChunks = meta.totalChunks - pending.length;
-      setUpload({ name: file.name, size: file.size, progress: Math.round((uploadedChunks / meta.totalChunks) * 100), status: pending.length ? `Uploading ${pending.length} chunks · ${PARALLEL_UPLOADS} parallel` : "Upload already complete", resumable: uploadedChunks > 0 });
+      setUpload({ name: file.name, size: file.size, progress: Math.round((uploadedChunks / meta.totalChunks) * 100), status: pending.length ? `מעלה ${pending.length} חלקים · ${PARALLEL_UPLOADS} במקביל` : "ההעלאה כבר הושלמה", resumable: uploadedChunks > 0 });
       let cursor = 0;
       const worker = async () => {
         while (cursor < pending.length) {
           const index = pending[cursor++];
           await uploadChunk(meta!, file, index, uploadCode);
           uploadedChunks++;
-          setUpload((current) => current ? { ...current, progress: Math.round((uploadedChunks / meta!.totalChunks) * 100), status: `Uploading · ${uploadedChunks}/${meta!.totalChunks} chunks` } : current);
+          setUpload((current) => current ? { ...current, progress: Math.round((uploadedChunks / meta!.totalChunks) * 100), status: `מעלה · ${uploadedChunks}/${meta!.totalChunks} חלקים` } : current);
         }
       };
       await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, Math.max(1, pending.length)) }, () => worker()));
@@ -117,7 +148,7 @@ export default function Home() {
       const done = await fetch(`/api/uploads/${meta.id}/complete`, { method: "POST", headers: { "x-upload-code": uploadCode } });
       if (!done.ok) throw new Error(await responseError(done, "Upload completion failed"));
       const queued = await done.json() as { jobId: string };
-      setUpload({ name: file.name, size: file.size, progress: 100, status: `Upload complete · import queued`, resumable: false });
+      setUpload({ name: file.name, size: file.size, progress: 100, status: "העלאה הושלמה · הייבוא בתור", resumable: false });
 
       for (let attempt = 0; attempt < 300; attempt++) {
         await sleep(2000);
@@ -125,38 +156,67 @@ export default function Home() {
         if (!statusResponse.ok) break;
         const status = await statusResponse.json() as { state: string; progress?: { processed?: number } };
         const processed = status.progress?.processed ?? 0;
-        setUpload((current) => current ? { ...current, progress: 100, status: status.state === "completed" ? `Import completed · ${processed} records` : status.state === "failed" ? "Import failed" : `Import running · ${processed} records processed` } : current);
+        setUpload((current) => current ? { ...current, progress: 100, status: status.state === "completed" ? `הייבוא הושלם · ${processed} רשומות` : status.state === "failed" ? "הייבוא נכשל" : `הייבוא פועל · ${processed} רשומות עובדו` } : current);
         if (status.state === "completed" || status.state === "failed") {
           if (status.state === "completed") localStorage.removeItem(RESUME_STORAGE_KEY);
           break;
         }
       }
     } catch (error) {
-      setUpload((current) => current ? { ...current, status: error instanceof Error ? error.message : "Upload failed", resumable: true } : current);
+      setUpload((current) => current ? { ...current, status: error instanceof Error ? error.message : "ההעלאה נכשלה", resumable: true } : current);
     }
   };
 
   const chooseFile = (file?: File) => { if (file) void uploadFile(file); };
+  const activePerson = person.data?.person;
+  const familyData = family.data ? { people: family.data.people, relationships: family.data.relationships } : null;
 
-  return <div className="min-h-screen bg-[#f5f7fb] text-slate-900">
-    <header className="border-b bg-white"><div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-[#102a43] p-2 text-white"><Network size={20}/></div><div><p className="text-lg font-semibold tracking-tight">Unified Data Intelligence</p><p className="text-xs text-slate-500">Synthetic Data Lab · Evidence-first discovery</p></div></div><Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50"><span className="mr-1.5 h-2 w-2 rounded-full bg-emerald-500"/> DEMO MODE · synthetic only</Badge></div></header>
-    <main className="mx-auto max-w-[1440px] space-y-6 px-6 py-8">
-      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        <Card className="overflow-hidden border-0 shadow-sm"><CardContent className="p-0"><div className="bg-[#102a43] px-7 py-6 text-white"><div className="flex items-start justify-between"><div><p className="mb-2 text-xs font-medium uppercase tracking-[0.2em] text-sky-200">Cross-source search</p><h1 className="text-2xl font-semibold">Find the signal across every source.</h1><p className="mt-2 max-w-xl text-sm text-slate-300">Normalized IDs, phones, names and addresses — with provenance preserved at every step.</p></div><Search className="text-sky-200" size={28}/></div><div className="mt-6 flex gap-2"><Input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder="ID, phone, name or address" className="h-12 border-0 bg-white text-slate-900 placeholder:text-slate-400"/><Button onClick={() => runSearch()} className="h-12 bg-[#e6b566] text-[#102a43] hover:bg-[#f0c37b]"><Search size={16} className="mr-2"/> Search</Button></div><div className="mt-3 flex flex-wrap gap-2">{demoQueries.map((q) => <button key={q} onClick={() => runSearch(q)} className="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200 transition hover:bg-white/20">Try {q}</button>)}</div></div>{results.data && <div className="p-6"><div className="mb-4 flex items-center justify-between"><div><p className="font-semibold">{results.data.total} result{results.data.total !== 1 ? "s" : ""}</p><p className="text-xs text-slate-500">Confidence: {results.data.confidence} · paginated</p></div><Badge variant="outline">{results.data.sources.length} source links</Badge></div>{results.data.items.map((p) => <button key={p.id} onClick={() => setSelected(p.id)} className="mb-3 flex w-full items-center justify-between rounded-xl border bg-white p-4 text-left transition hover:border-sky-300 hover:shadow-sm"><div><p className="font-medium">{p.fullName}</p><p className="mt-1 text-xs text-slate-500">ID {p.nationalId ?? "—"} · {p.phone ?? "No phone"} · {p.address ?? "No address"}</p></div><ChevronRight size={18} className="text-slate-400"/></button>)}</div>}</CardContent></Card>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">{[{icon:Database,label:"Unified records",value:dashboard.data?.rawRecords ?? "—",tone:"bg-sky-50 text-sky-700"},{icon:Network,label:"Verified relationships",value:dashboard.data?.relationships ?? "—",tone:"bg-violet-50 text-violet-700"},{icon:ShieldCheck,label:"Evidence coverage",value:"100%",tone:"bg-emerald-50 text-emerald-700"}].map(({icon:Icon,label,value,tone}) => <Card key={label} className="border-0 shadow-sm"><CardContent className="flex items-center gap-4 p-5"><div className={`rounded-xl p-3 ${tone}`}><Icon size={20}/></div><div><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div></CardContent></Card>)}</div>
+  return <div dir="rtl" className="min-h-screen bg-[#f6f3f8] text-slate-900">
+    <header className="sticky top-0 z-40 border-b border-white/50 bg-[#f6f3f8]/90 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-4 sm:px-7">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="rounded-2xl bg-[#20102b] p-2.5 text-fuchsia-200 shadow-lg shadow-fuchsia-950/20"><Network size={21}/></div>
+          <div className="min-w-0" dir="ltr"><p className="text-sm font-bold tracking-tight text-[#20102b] sm:text-lg"><span className="hidden sm:inline">Unified Data Intelligence</span><span className="sm:hidden">Unified Intelligence</span></p><p className="hidden text-xs text-slate-500 sm:block">Evidence-first discovery · provenance preserved</p></div>
+        </div>
+        <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 text-[10px] text-emerald-700 hover:bg-emerald-50 sm:text-xs"><span className="ml-1.5 h-2 w-2 rounded-full bg-emerald-500"/> DEMO MODE</Badge>
       </div>
-      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <Card className="border-0 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">Source health</CardTitle><Activity size={18} className="text-slate-400"/></CardHeader><CardContent className="space-y-4">{sources.data?.map((s) => <div key={s.name}><div className="mb-1 flex justify-between text-sm"><span>{s.name}</span><span className="text-xs text-emerald-600">ready · {s.records} records</span></div><Progress value={100}/></div>)}<Button variant="outline" className="mt-2 w-full" onClick={() => importMutation.mutate({ source: "SYNTHETIC_UPLOAD", batchSize: 2 })}><Upload size={16} className="mr-2"/> {importMutation.isPending ? "Importing…" : "Run synthetic demo import"}</Button></CardContent></Card>
-        <Card className="border-0 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">Upload data file</CardTitle><Upload size={18} className="text-sky-600"/></CardHeader><CardContent>
-          <p className="mb-3 text-sm text-slate-500">Upload up to <strong>2GB</strong>. Files are split into 8MB pieces and sent in parallel with automatic retry. Supported data formats include CSV, TSV, TXT, JSON, JSONL, NDJSON, XLSX, XLS, ODS, ZIP and GZIP.</p>
-          <Input value={uploadCode} onChange={(e) => setUploadCode(e.target.value)} type="password" inputMode="numeric" placeholder="Upload access code" className="mb-3"/>
-          <input ref={inputRef} type="file" className="hidden" onChange={(e) => { chooseFile(e.target.files?.[0]); e.currentTarget.value = ""; }}/>
-          <button type="button" onClick={() => inputRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(e) => { e.preventDefault(); setDragging(false); chooseFile(e.dataTransfer.files?.[0]); }} disabled={!uploadCode || upload?.status.startsWith("Uploading") === true} className={`flex w-full flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-7 text-center transition ${dragging ? "border-sky-500 bg-sky-50" : "border-slate-200 bg-slate-50 hover:border-sky-300 hover:bg-sky-50"} disabled:cursor-not-allowed disabled:opacity-60`}><FileUp size={25} className="mb-2 text-sky-600"/><span className="text-sm font-medium">Choose a file or drag it here</span><span className="mt-1 text-xs text-slate-500">The server validates the format and size before upload</span></button>
-          {upload && <div className="mt-4 space-y-2"><div className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2"><Upload size={14} className="shrink-0 text-sky-600"/><span className="truncate">{upload.name} · {formatBytes(upload.size)}</span></span><button aria-label="Clear upload status" onClick={() => setUpload(null)}><X size={15}/></button></div><Progress value={upload.progress}/><div className="flex items-center justify-between gap-3 text-xs text-slate-500"><span>{upload.status}</span>{upload.resumable && <span className="flex shrink-0 items-center gap-1 text-sky-700"><RefreshCw size={12}/> Resume available</span>}</div></div>}
-        </CardContent></Card>
-        <Card className="border-0 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">AI evidence assistant</CardTitle><Sparkles size={18} className="text-[#b7791f"/></CardHeader><CardContent><p className="mb-4 text-sm text-slate-500">Ask in natural language. The orchestrator can only call allowlisted deterministic tools.</p><div className="flex gap-2"><Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="מי האחים של יוסי?"/><Button onClick={() => ai.mutate({ prompt: aiPrompt })} disabled={!aiPrompt || ai.isPending}>Ask</Button></div>{ai.data && <div className="mt-4 rounded-xl bg-slate-50 p-4"><p className="font-medium">{ai.data.answer}</p><p className="mt-2 text-xs text-slate-500">{ai.data.confidence} · {ai.data.sources.join(", ") || "No source"}</p></div>}</CardContent></Card>
-      </div>
-      {selected && person.data && <Card className="border-0 shadow-sm"><CardHeader><CardTitle>{person.data.person.fullName}</CardTitle></CardHeader><CardContent className="grid gap-6 lg:grid-cols-3"><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Identity</p><p className="text-sm">National ID: {person.data.person.nationalId}</p><p className="text-sm">Phone: {person.data.person.phone}</p><p className="text-sm">Address: {person.data.person.address}</p></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Family graph · depth 2</p><div className="flex flex-wrap gap-2">{family.data?.people.map((p) => <button key={p.id} onClick={() => setSelected(p.id)} className={`rounded-lg border px-3 py-2 text-xs ${p.id === selected ? "border-sky-400 bg-sky-50" : "bg-white"}`}>{p.fullName}</button>)}</div></div><div><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Provenance</p>{person.data.person.sourceNames.map((s) => <Badge key={s} variant="outline" className="mr-2">{s}</Badge>)}<p className="mt-3 text-xs text-slate-500">Deterministic evidence is preserved per source.</p></div></CardContent></Card>}
+    </header>
+
+    <main className="mx-auto max-w-[1500px] space-y-6 px-4 py-6 sm:px-7 sm:py-8">
+      <section className="search-hero overflow-hidden rounded-[28px] bg-[#20102b] px-5 py-7 text-white shadow-[0_24px_80px_rgba(46,24,61,0.2)] sm:px-9 sm:py-10">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="max-w-2xl"><div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/80"><GitBranch size={14}/> חיפוש מאוחד</div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">מצא את האדם. ראה את הקשרים.</h1><p className="mt-3 max-w-xl text-sm leading-6 text-white/65 sm:text-base">חיפוש לפי תעודת זהות, טלפון, שם או כתובת — עם עץ משפחה ויזואלי שמבוסס רק על קשרים מאומתים.</p></div>
+          <div className="hidden rounded-2xl border border-white/10 bg-white/5 p-4 sm:block"><ShieldCheck className="text-fuchsia-200" size={30}/><p className="mt-2 text-xs text-white/55">Zero Hallucination<br/>Source-backed only</p></div>
+        </div>
+        <div className="mt-7 flex flex-col gap-3 lg:flex-row">
+          <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><Input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && runSearch()} placeholder="הקלד ת״ז, טלפון, שם או כתובת" className="h-14 border-0 bg-white pr-12 text-base text-slate-900 placeholder:text-slate-400"/></div>
+          <Button onClick={() => runSearch()} className="h-14 bg-[#f2a9d2] px-7 text-[#30123e] hover:bg-[#f7c2e0]"><Search size={17} className="ml-2"/> חיפוש</Button>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="ml-1 text-xs text-white/45">סוג חיפוש:</span>
+          {([ ["national_id", "תעודת זהות"], ["phone", "טלפון"], ["name", "שם"], ["address", "כתובת"] ] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setType(value)} className={`rounded-full px-3 py-1.5 text-xs transition ${type === value ? "bg-white text-[#30123e]" : "bg-white/10 text-white/65 hover:bg-white/15"}`}>{label}</button>)}
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">{demoQueries.map((item) => <button key={item.value} type="button" onClick={() => runSearch(item.value, item.type)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65 transition hover:bg-white/15">{item.label}: {item.value}</button>)}</div>
+      </section>
+
+      {results.data && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader className="flex-row items-center justify-between border-b border-slate-100 pb-4"><div><CardTitle className="text-base">תוצאות חיפוש</CardTitle><p className="mt-1 text-xs text-slate-500">{results.data.total} תוצאות · סטטוס: {results.data.confidence === "VERIFIED" ? "התאמה מדויקת" : "התאמה אפשרית"}</p></div><Badge variant="outline" className="gap-1"><BadgeCheck size={13}/> {results.data.sources.length} מקורות</Badge></CardHeader><CardContent className="space-y-3 pt-5">{results.data.items.length ? results.data.items.map((p) => <button key={p.id} type="button" onClick={() => setSelected(p.id)} className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-right transition hover:-translate-y-0.5 hover:border-fuchsia-300 hover:shadow-md ${selected === p.id ? "border-fuchsia-300 bg-fuchsia-50/60" : "border-slate-100 bg-white"}`}><div className="min-w-0"><p className="font-semibold text-slate-900">{p.fullName}</p><p className="mt-1 truncate text-xs text-slate-500">ת״ז {p.nationalId ?? "לא נמצא"} · {p.phone ?? "טלפון לא נמצא"}</p><p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-400"><MapPin size={12}/>{p.address ?? "כתובת לא נמצאה"}</p></div><span className="shrink-0 rounded-full bg-[#20102b] px-3 py-2 text-xs text-white">פתח עץ</span></button>) : <div className="rounded-2xl bg-slate-50 p-7 text-center text-sm text-slate-500">לא נמצאה התאמה מדויקת. נסה טלפון, שם או ערך מנורמל.</div>}</CardContent></Card>
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader><CardTitle className="text-base">איך לקרוא את התוצאה</CardTitle></CardHeader><CardContent className="space-y-4 text-sm text-slate-600"><div className="flex gap-3"><ShieldCheck className="shrink-0 text-emerald-600" size={18}/><p><strong className="text-slate-900">Verified</strong> — התאמה לפי מזהה או קשר שמופיע במקור.</p></div><div className="flex gap-3"><GitBranch className="shrink-0 text-fuchsia-600" size={18}/><p>לחיצה על אדם פותחת אותו כמרכז עץ חדש.</p></div><div className="flex gap-3"><Database className="shrink-0 text-cyan-600" size={18}/><p>כל כרטיס מציג את המקורות שמאמתים את הנתון.</p></div></CardContent></Card>
+      </section>}
+
+      {selected && activePerson && familyData && <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-700">Person details</p><h2 className="mt-1 text-2xl font-bold text-[#20102b]">{activePerson.fullName}</h2><p className="mt-1 text-sm text-slate-500">מרכז העץ · ת״ז {activePerson.nationalId ?? "לא נמצאה"}</p></div><div className="flex flex-wrap items-center gap-2">{activePerson.sourceNames.map((source) => <Badge key={source} variant="outline" className="bg-white">{source}</Badge>)}<Button variant="outline" size="sm" onClick={() => setSelected(null)}>סגור</Button></div></div>
+        <FamilyTree data={familyData} centralId={selected} onSelect={setSelected}/>
+        <div className="grid gap-4 md:grid-cols-3"><Card className="border-0 bg-white/80 shadow-sm"><CardContent className="p-5"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Identity</p><p className="text-sm">ת״ז: {activePerson.nationalId ?? "לא נמצא"}</p><p className="mt-2 flex items-center gap-2 text-sm"><Phone size={14} className="text-fuchsia-600"/> {activePerson.phone ?? "טלפון לא נמצא"}</p><p className="mt-2 flex items-center gap-2 text-sm"><MapPin size={14} className="text-fuchsia-600"/> {activePerson.address ?? "כתובת לא נמצאה"}</p></CardContent></Card><Card className="border-0 bg-white/80 shadow-sm"><CardContent className="p-5"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Provenance</p><p className="text-sm text-slate-600">הנתונים נשמרים לפי מקור ורשומה, ללא מחיקת ערכים היסטוריים.</p><p className="mt-3 text-xs text-slate-400">{person.data?.rawRecords.length ?? 0} רשומות מקור משויכות</p></CardContent></Card><Card className="border-0 bg-white/80 shadow-sm"><CardContent className="p-5"><p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">Relationships</p><p className="flex items-center gap-2 text-sm"><UsersRound size={15} className="text-cyan-600"/> {familyData.relationships.length} קשרים שנמצאו</p><p className="mt-2 text-xs text-slate-500">העץ ניתן להרחבה דרך בחירת כרטיס.</p></CardContent></Card></div>
+      </section>}
+
+      <section className="grid gap-6 lg:grid-cols-[1.15fr_1fr_1fr]">
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">מצב מקורות</CardTitle><Activity size={18} className="text-fuchsia-600"/></CardHeader><CardContent className="space-y-4">{sources.data?.map((source) => <div key={source.name}><div className="mb-1 flex justify-between gap-3 text-sm"><span className="truncate">{source.name}</span><span className="shrink-0 text-xs text-emerald-600">ready · {source.records}</span></div><Progress value={100}/></div>)}<Button variant="outline" className="mt-2 w-full" onClick={() => importMutation.mutate({ source: "SYNTHETIC_UPLOAD", batchSize: 2 })}><Upload size={16} className="ml-2"/> {importMutation.isPending ? "מייבא…" : "הרץ ייבוא דמו"}</Button></CardContent></Card>
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">העלאת מקור חדש</CardTitle><Upload size={18} className="text-cyan-600"/></CardHeader><CardContent><p className="mb-3 text-sm leading-6 text-slate-500">העלאה בחתיכות, ניסיונות חוזרים והמשך אוטומטי. נתמך: CSV, TSV, TXT, JSON, JSONL, XLSX, ZIP ו־GZIP.</p><Input value={uploadCode} onChange={(e) => setUploadCode(e.target.value)} type="password" inputMode="numeric" placeholder="קוד גישה להעלאה" className="mb-3"/><input ref={inputRef} type="file" className="hidden" onChange={(e) => { chooseFile(e.target.files?.[0]); e.currentTarget.value = ""; }}/><button type="button" onClick={() => inputRef.current?.click()} onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(e) => { e.preventDefault(); setDragging(false); chooseFile(e.dataTransfer.files?.[0]); }} disabled={!uploadCode || upload?.status.includes("מעלה") === true} className={`flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-6 text-center transition ${dragging ? "border-cyan-500 bg-cyan-50" : "border-slate-200 bg-slate-50 hover:border-cyan-300 hover:bg-cyan-50"} disabled:cursor-not-allowed disabled:opacity-60`}><FileUp size={24} className="mb-2 text-cyan-600"/><span className="text-sm font-semibold">בחר קובץ או גרור לכאן</span><span className="mt-1 text-xs text-slate-500">הקובץ המקורי אינו משתנה</span></button>{upload && <div className="mt-4 space-y-2"><div className="flex items-center justify-between gap-3 text-sm"><span className="flex min-w-0 items-center gap-2"><Upload size={14} className="shrink-0 text-cyan-600"/><span className="truncate">{upload.name} · {formatBytes(upload.size)}</span></span><button aria-label="נקה סטטוס העלאה" onClick={() => setUpload(null)}><X size={15}/></button></div><Progress value={upload.progress}/><div className="flex items-center justify-between gap-3 text-xs text-slate-500"><span>{upload.status}</span>{upload.resumable && <span className="flex shrink-0 items-center gap-1 text-cyan-700"><RefreshCw size={12}/> ניתן להמשיך</span>}</div></div>}</CardContent></Card>
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">עוזר ראיות</CardTitle><Sparkles size={18} className="text-fuchsia-600"/></CardHeader><CardContent><p className="mb-4 text-sm leading-6 text-slate-500">שאל בשפה טבעית. התשובות מוגבלות לכלים דטרמיניסטיים ומציגות מקור.</p><div className="flex gap-2"><Input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="מי האחים של יוסי?"/><Button onClick={() => ai.mutate({ prompt: aiPrompt })} disabled={!aiPrompt || ai.isPending}>שאל</Button></div>{ai.data && <div className="mt-4 rounded-2xl bg-slate-50 p-4"><p className="font-medium">{ai.data.answer}</p><p className="mt-2 text-xs text-slate-500">{ai.data.confidence} · {ai.data.sources.join(", ") || "מקור לא נמצא"}</p></div>}</CardContent></Card>
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-3">{[{icon: Database, label: "רשומות גולמיות", value: dashboard.data?.rawRecords ?? "—", tone: "bg-cyan-50 text-cyan-700"}, {icon: GitBranch, label: "קשרים מאומתים", value: dashboard.data?.relationships ?? "—", tone: "bg-fuchsia-50 text-fuchsia-700"}, {icon: Smartphone, label: "מותאם למובייל", value: "100%", tone: "bg-emerald-50 text-emerald-700"}].map(({ icon: Icon, label, value, tone }) => <Card key={label} className="border-0 bg-white/70 shadow-sm"><CardContent className="flex items-center gap-4 p-5"><div className={`rounded-xl p-3 ${tone}`}><Icon size={20}/></div><div><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></div></CardContent></Card>)}</section>
     </main>
   </div>;
 }
