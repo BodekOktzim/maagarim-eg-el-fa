@@ -1,3 +1,4 @@
 datasets/Facebook.txt filter=lfs diff=lfs merge=lfs -text
 datasets/AGRON2006.txt filter=lfs diff=lfs merge=lfs -text
 datasets/Elector.txt filter=lfs diff=lfs merge=lfs -text
+search-index-full/*.bin filter=lfs diff=lfs merge=lfs -text

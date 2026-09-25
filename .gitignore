@@ -46,6 +46,8 @@ pids
 *.seed
 *.pid.lock
 *.bak
+search-index-full/*.raw
+search-index-full/*.tmp
 
 # Coverage directory used by tools like istanbul
 coverage/

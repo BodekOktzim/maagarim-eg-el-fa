@@ -1,0 +1,32 @@
+{
+  "format": "u32le-normalized-id-u64le-offset-u32le-row-bytes",
+  "recordBytes": 16,
+  "blockRecords": 4096,
+  "generatedFrom": "Git LFS source files; full source rows are not copied into the index",
+  "sources": [
+    {
+      "key": "agron2006",
+      "file": "AGRON2006.txt",
+      "records": 9219606,
+      "indexBytes": 147513696,
+      "sparseBytes": 36016,
+      "sourceBytes": 1841092492
+    },
+    {
+      "key": "elector",
+      "file": "Elector.txt",
+      "records": 6187583,
+      "indexBytes": 99001328,
+      "sparseBytes": 24176,
+      "sourceBytes": 726871718
+    },
+    {
+      "key": "facebook",
+      "file": "Facebook.txt",
+      "records": 271588,
+      "indexBytes": 4345408,
+      "sparseBytes": 1072,
+      "sourceBytes": 316886147
+    }
+  ]
+}

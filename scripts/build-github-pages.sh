@@ -13,4 +13,4 @@ rm -rf __manus__
 touch .nojekyll
 
 echo "GitHub Pages site built at the repository root: $ROOT"
-echo "This static build uses synthetic demo records only; it does not contain the private source files."
+echo "The static UI uses public Git LFS Range requests for ID search; source data is not copied into Pages assets."

@@ -4,7 +4,9 @@ Research/demo application for source-aware search, deterministic entity resoluti
 
 ## GitHub Pages demo
 
-The public static demo is published at https://bodekoktzim.github.io/maagarim-eg-el-fa/. It uses synthetic records in the browser and does not call the application's API or database. Rebuild the Pages output with `bash scripts/build-github-pages.sh`; that command copies only the generated static frontend to the repository root, which is the Pages source. GitHub Pages cannot host the Node.js API, database, or queue worker.
+The public site is published at https://bodekoktzim.github.io/maagarim-eg-el-fa/. The static frontend does not call the application's API or database. It searches exact national-ID candidates through sorted sidecar indexes and HTTP Range requests to public Git LFS source files, so a query downloads only a small index slice and matching lines rather than all source files. `scripts/build-lfs-search-index.py` rebuilds the compact indexes from the three LFS files; the full `.bin` indexes are themselves stored in Git LFS, while `client/public/index-seek` contains only small sparse directories and the source-count manifest. Rebuild the Pages output with `bash scripts/build-github-pages.sh`; GitHub Pages cannot host the Node.js API, database, or queue worker.
+
+The Pages password screen is an interface-only gate. It is not access control: the password check runs in public JavaScript, and all Git LFS files and ID indexes in this public repository remain directly downloadable. Do not use it to protect personal data.
 
 ## Run
 
