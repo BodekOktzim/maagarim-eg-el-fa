@@ -33,6 +33,7 @@ export default function GitHubPagesHome() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [city, setCity] = useState("");
+  const [age, setAge] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [matches, setMatches] = useState<typeof demoPeople>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -45,7 +46,8 @@ export default function GitHubPagesHome() {
     const first = normalize(firstName);
     const last = normalize(lastName);
     const cityValue = normalize(city);
-    if (mode === "name" ? !first && !last && !cityValue : !value) return;
+    const ageValue = age ? Number(age) : undefined;
+    if (mode === "name" ? !first && !last && !cityValue && !ageValue : !value) return;
     setSearched(true);
     setSelectedId(null);
     setIsSearching(true);
@@ -54,8 +56,9 @@ export default function GitHubPagesHome() {
         if (mode === "national_id") return normalize(person.nationalId ?? "") === value;
         if (mode === "phone") return normalize(person.phone ?? "") === value;
         if (mode === "facebook_id") return value === "fb003" && person.id === "demo-100000005";
-        const fullName = normalize(person.fullName);
-        return (!first || normalize(person.firstName ?? "").includes(first)) && (!last || normalize(person.lastName ?? "").includes(last)) && (!cityValue || normalize(person.address ?? "").includes(cityValue));
+        const birthDate = person.birthDate;
+        const actualAge = birthDate ? new Date().getFullYear() - Number(birthDate.slice(0, 4)) - (new Date().toISOString().slice(5, 10) < birthDate.slice(5, 10) ? 1 : 0) : undefined;
+        return (!first || normalize(person.firstName ?? "").includes(first)) && (!last || normalize(person.lastName ?? "").includes(last)) && (!cityValue || normalize(person.address ?? "").includes(cityValue)) && (!ageValue || actualAge === ageValue);
       });
       setMatches(found);
       setSelectedId(found[0]?.id ?? null);
@@ -92,8 +95,14 @@ export default function GitHubPagesHome() {
           <div className="grid gap-2 sm:grid-cols-4">
             {([["national_id", "תעודת זהות"], ["phone", "מספר טלפון"], ["facebook_id", "מזהה Facebook"], ["name", "חיפוש לפי פרטים"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => { setMode(value); setMatches([]); setSearched(false); setSelectedId(null); }} className={`rounded-xl border px-3 py-3 text-sm transition ${mode === value ? "border-fuchsia-200 bg-fuchsia-200/20 text-white" : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"}`}>{label}</button>)}
           </div>
-          {mode === "name" ? <div className="grid gap-3 sm:grid-cols-3"><input value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="שם פרטי" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/><input value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="שם משפחה" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/><input value={city} onChange={(event) => setCity(event.target.value)} placeholder="עיר / כתובת" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/><button type="button" onClick={runSearch} disabled={isSearching || (!firstName.trim() && !lastName.trim() && !city.trim())} className="h-12 rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-3"><Search size={17} className="ml-2 inline"/>חפש</button></div> : <div className="flex flex-col gap-3 sm:flex-row"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }} placeholder={mode === "national_id" ? "לדוגמה: 100000003" : mode === "phone" ? "לדוגמה: 050-1234567" : "לדוגמה: fb-003"} className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/><button type="button" onClick={runSearch} disabled={isSearching || !query.trim()} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50"><Search size={17} className="ml-2 inline"/>חיפוש</button></div>}
-          <div className="flex flex-wrap gap-2 text-xs text-white/55"><span>חיפושים לדוגמה:</span>{(mode === "national_id" ? ["100000003", "100000001"] : mode === "phone" ? ["050-1234567", "050-1111111"] : mode === "facebook_id" ? ["fb-003"] : ["יוסי", "כהן"]).map((example) => <button key={example} type="button" onClick={() => { if (mode === "name") { setFirstName(example); setLastName(""); setCity(""); } else setQuery(example); }} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 hover:bg-white/10">{example}</button>)}</div>
+          {mode === "name" ? <div className="grid gap-3 sm:grid-cols-4">
+            <input value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="שם פרטי" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/>
+            <input value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="שם משפחה" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/>
+            <input value={city} onChange={(event) => setCity(event.target.value)} placeholder="עיר / כתובת" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/>
+            <input type="number" min="1" max="120" value={age} onChange={(event) => setAge(event.target.value.replace(/\D/g, ""))} placeholder="גיל" className="h-12 rounded-xl border border-white/10 bg-white px-4 text-slate-900 placeholder:text-slate-400"/>
+            <button type="button" onClick={runSearch} disabled={isSearching || (!firstName.trim() && !lastName.trim() && !city.trim() && !age.trim())} className="h-12 rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-4"><Search size={17} className="ml-2 inline"/>חפש</button>
+          </div> : <div className="flex flex-col gap-3 sm:flex-row"><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }} placeholder={mode === "national_id" ? "לדוגמה: 100000003" : mode === "phone" ? "לדוגמה: 050-1234567" : "לדוגמה: fb-003"} className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/><button type="button" onClick={runSearch} disabled={isSearching || !query.trim()} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50"><Search size={17} className="ml-2 inline"/>חיפוש</button></div>}
+          <div className="flex flex-wrap gap-2 text-xs text-white/55"><span>חיפושים לדוגמה:</span>{(mode === "national_id" ? ["100000003", "100000001"] : mode === "phone" ? ["050-1234567", "050-1111111"] : mode === "facebook_id" ? ["fb-003"] : ["יוסי", "כהן"]).map((example) => <button key={example} type="button" onClick={() => { if (mode === "name") { setFirstName(example); setLastName(""); setCity(""); setAge(""); } else setQuery(example); }} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 hover:bg-white/10">{example}</button>)}</div>
         </div>
       </section>
 
