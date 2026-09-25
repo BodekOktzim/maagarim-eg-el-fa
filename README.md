@@ -2,6 +2,10 @@
 
 Research/demo application for source-aware search, deterministic entity resolution, family relationships, evidence and AI orchestration, with source datasets stored in Git LFS.
 
+## GitHub Pages demo
+
+The public static demo is published at https://bodekoktzim.github.io/maagarim-eg-el-fa/. It uses synthetic records in the browser and does not call the application's API or database. Rebuild the Pages output with `bash scripts/build-github-pages.sh`; commit only the generated `docs/` frontend. GitHub Pages cannot host the Node.js API, database, or queue worker.
+
 ## Run
 
 ```bash

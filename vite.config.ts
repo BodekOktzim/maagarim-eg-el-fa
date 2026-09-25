@@ -153,6 +153,10 @@ function vitePluginManusDebugCollector(): Plugin {
 const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
 
 export default defineConfig({
+  base: process.env.GITHUB_PAGES === "true" ? "/maagarim-eg-el-fa/" : "/",
+  define: {
+    __GITHUB_PAGES_DEMO__: JSON.stringify(process.env.GITHUB_PAGES === "true"),
+  },
   plugins,
   resolve: {
     alias: {
