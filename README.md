@@ -1,6 +1,6 @@
 # Unified Data Intelligence Lab
 
-Synthetic-only research/demo application for source-aware search, deterministic entity resolution, family relationships, evidence and AI orchestration.
+Research/demo application for source-aware search, deterministic entity resolution, family relationships, evidence and AI orchestration, with source datasets stored in Git LFS.
 
 ## Run
 
@@ -65,8 +65,8 @@ The importer cannot safely interpret literally every binary format. It accepts t
 
 ## Visual relationship search
 
-The browser interface provides responsive Hebrew-first search by national ID, phone, name, and address. Selecting a verified person opens a source-backed visual family tree with parents, siblings, grandparents, extended-family branches when the required identifiers are available, provenance badges, and mobile-friendly horizontal tree navigation.
+The browser interface provides responsive Hebrew-first search by national ID, phone, name, and address. Search results are presented alongside a source-backed visual family tree; the first match is opened by default, and selecting another person re-centers the tree. The tree includes parents, siblings, grandparents, co-parents documented through a shared child record, and extended-family branches when the required identifiers are available. A UTF-8 CSV export includes every search-result page (up to 50,000 matches) and the selected person's evidence-backed family links. CSV cells are escaped and formula-like values are neutralized for spreadsheet safety. The tree retains mobile-friendly horizontal navigation.
 
 ## Search modes and data boundary
 
-The search screen first requires selecting a search mode: national ID, phone number, Facebook identifier, or multi-field name search. Name search accepts any non-empty combination of first name, last name, city, and age; an empty submission is blocked in the browser and server contract. Raw source files containing personal identifiers are intentionally not committed to the public GitHub repository. They must be loaded through private server storage or a protected database connection, with only schemas, parsers, and synthetic fixtures kept in Git.
+The search screen first requires selecting a search mode: national ID, phone number, Facebook identifier, or multi-field name search. Name search accepts any non-empty combination of first name, last name, city, and age; an empty submission is blocked in the browser and server contract. The source files `datasets/Facebook.txt`, `datasets/AGRON2006.txt`, and `datasets/Elector.txt` are stored as Git LFS objects, not ordinary Git blobs. This repository is public; anyone who can access it can download these files. The three current files total approximately 2.7GB and each is below GitHub Free's documented 2GB per-file Git LFS limit. GitHub Free currently includes 10GiB of LFS storage and download bandwidth; clones and downloads count against the repository owner's bandwidth. See [GitHub Git LFS limits](https://docs.github.com/repositories/working-with-files/managing-large-files/about-git-large-file-storage) and [LFS billing](https://docs.github.com/articles/about-billing-for-git-large-file-storage).

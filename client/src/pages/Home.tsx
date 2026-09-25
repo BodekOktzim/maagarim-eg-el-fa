@@ -1,12 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import FamilyTree from "@/components/FamilyTree";
+import { buildSearchResultsCsv } from "@/lib/search-export";
 import {
   Activity,
   BadgeCheck,
   Database,
+  Download,
   FileUp,
   GitBranch,
+  LoaderCircle,
   MapPin,
   Network,
   Phone,
@@ -66,7 +69,10 @@ export default function Home() {
   const [upload, setUpload] = useState<UploadState | null>(null);
   const [uploadCode, setUploadCode] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const trpcUtils = trpc.useUtils();
   const dashboard = trpc.dashboard.useQuery();
   const searchInput = useMemo(() => searchRequest ?? ({ query: "", type: "national_id" as const, page: 1, pageSize: 30 }), [searchRequest]);
   const results = trpc.search.useQuery(searchInput, { enabled: Boolean(searchRequest) });
@@ -82,6 +88,8 @@ export default function Home() {
   const runSearch = (value = query, forcedType?: "national_id" | "phone" | "facebook_id") => {
     const nextType = forcedType ?? (type === "name" ? "name" : detectType(value));
     if (!value.trim()) return;
+    setSelected(null);
+    setExportError(null);
     setQuery(value);
     setSearchRequest({ query: value.trim(), type: nextType });
   };
@@ -91,7 +99,59 @@ export default function Home() {
     const city = nameFields.city.trim() || undefined;
     const age = nameFields.age.trim() ? Number(nameFields.age) : undefined;
     if (!firstName && !lastName && !city && age === undefined) return;
+    setSelected(null);
+    setExportError(null);
     setSearchRequest({ query: "", type: "name", firstName, lastName, city, age });
+  };
+
+  useEffect(() => {
+    if (!results.isFetching && !selected && results.data?.items[0]) {
+      setSelected(results.data.items[0].id);
+    }
+  }, [results.data, results.isFetching, selected]);
+
+  const exportResults = async () => {
+    if (!searchRequest || !results.data || exporting) return;
+    const pageSize = 100;
+    const maxExportRows = 50_000;
+    if (results.data.total > maxExportRows) {
+      setExportError("החיפוש מחזיר יותר מ־50,000 תוצאות. צמצם את החיפוש ונסה לייצא שוב.");
+      return;
+    }
+
+    setExporting(true);
+    setExportError(null);
+    try {
+      const firstPage = await trpcUtils.search.fetch({ ...searchRequest, page: 1, pageSize });
+      const allPeople = [...firstPage.items];
+      const pageCount = Math.ceil(firstPage.total / pageSize);
+      for (let firstPage = 2; firstPage <= pageCount; firstPage += 4) {
+        const pages = Array.from({ length: Math.min(4, pageCount - firstPage + 1) }, (_, index) => firstPage + index);
+        const resultPages = await Promise.all(pages.map((page) => trpcUtils.search.fetch({ ...searchRequest, page, pageSize })));
+        resultPages.forEach((resultPage) => allPeople.push(...resultPage.items));
+      }
+
+      const csv = buildSearchResultsCsv(
+        allPeople,
+        familyData?.people ?? [],
+        familyData?.relationships ?? [],
+        selected ?? undefined,
+      );
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/T/, "_").slice(0, 15);
+      link.href = url;
+      link.download = `family-search-results_${timestamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setExportError("הייצוא נכשל. נסה שוב בעוד רגע.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const uploadChunk = async (meta: UploadMeta, file: File, index: number, code: string) => {
@@ -207,9 +267,32 @@ export default function Home() {
         <div className="mt-5 flex flex-wrap gap-2">{mode && demoQueries.filter((item) => item.type === mode || mode === "name" && item.type === "name").map((item) => <button key={item.value} type="button" onClick={() => item.type === "name" ? setNameFields({ ...nameFields, firstName: "יוסי" }) : runSearch(item.value, item.type)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65 transition hover:bg-white/15">{item.label}: {item.value}</button>)}</div>
       </section>
 
-      {results.data && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader className="flex-row items-center justify-between border-b border-slate-100 pb-4"><div><CardTitle className="text-base">תוצאות חיפוש</CardTitle><p className="mt-1 text-xs text-slate-500">{results.data.total} תוצאות · סטטוס: {results.data.confidence === "VERIFIED" ? "התאמה מדויקת" : "התאמה אפשרית"}</p></div><Badge variant="outline" className="gap-1"><BadgeCheck size={13}/> {results.data.sources.length} מקורות</Badge></CardHeader><CardContent className="space-y-3 pt-5">{results.data.items.length ? results.data.items.map((p) => <button key={p.id} type="button" onClick={() => setSelected(p.id)} className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-right transition hover:-translate-y-0.5 hover:border-fuchsia-300 hover:shadow-md ${selected === p.id ? "border-fuchsia-300 bg-fuchsia-50/60" : "border-slate-100 bg-white"}`}><div className="min-w-0"><p className="font-semibold text-slate-900">{p.fullName}</p><p className="mt-1 truncate text-xs text-slate-500">ת״ז {p.nationalId ?? "לא נמצא"} · {p.phone ?? "טלפון לא נמצא"}</p><p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-400"><MapPin size={12}/>{p.address ?? "כתובת לא נמצאה"}</p></div><span className="shrink-0 rounded-full bg-[#20102b] px-3 py-2 text-xs text-white">פתח עץ</span></button>) : <div className="rounded-2xl bg-slate-50 p-7 text-center text-sm text-slate-500">לא נמצאה התאמה מדויקת. נסה טלפון, שם או ערך מנורמל.</div>}</CardContent></Card>
-        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader><CardTitle className="text-base">איך לקרוא את התוצאה</CardTitle></CardHeader><CardContent className="space-y-4 text-sm text-slate-600"><div className="flex gap-3"><ShieldCheck className="shrink-0 text-emerald-600" size={18}/><p><strong className="text-slate-900">Verified</strong> — התאמה לפי מזהה או קשר שמופיע במקור.</p></div><div className="flex gap-3"><GitBranch className="shrink-0 text-fuchsia-600" size={18}/><p>לחיצה על אדם פותחת אותו כמרכז עץ חדש.</p></div><div className="flex gap-3"><Database className="shrink-0 text-cyan-600" size={18}/><p>כל כרטיס מציג את המקורות שמאמתים את הנתון.</p></div></CardContent></Card>
+      {searchRequest && results.isFetching && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200 bg-white/90 p-5 text-[#30123e] shadow-sm">
+        <LoaderCircle aria-hidden="true" className="shrink-0 motion-safe:animate-spin text-fuchsia-600" size={24}/>
+        <div><p className="font-semibold">החיפוש מתבצע…</p><p className="mt-1 text-sm text-slate-500">אנחנו מחפשים ברשומות ובקשרים הרלוונטיים.</p></div>
+      </section>}
+
+      {searchRequest && !results.isFetching && results.data && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="border-0 bg-white/80 shadow-sm">
+          <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div><CardTitle className="text-base">תוצאות חיפוש</CardTitle><p className="mt-1 text-xs text-slate-500">{results.data.total} תוצאות · סטטוס: {results.data.confidence === "VERIFIED" ? "התאמה מדויקת" : "התאמה אפשרית"}</p></div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="gap-1"><BadgeCheck size={13}/> {results.data.sources.length} מקורות</Badge>
+              <Button type="button" variant="outline" size="sm" onClick={() => void exportResults()} disabled={exporting || (Boolean(selected) && family.isFetching)} className="gap-2">
+                {exporting ? <LoaderCircle size={15} className="motion-safe:animate-spin" aria-hidden="true"/> : <Download size={15} aria-hidden="true"/>}
+                {exporting ? "מכין קובץ…" : "ייצוא תוצאות"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-5">
+            {exportError && <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{exportError}</p>}
+            {results.data.items.length ? results.data.items.map((p) => <button key={p.id} type="button" onClick={() => setSelected(p.id)} aria-pressed={selected === p.id} className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-right transition hover:-translate-y-0.5 hover:border-fuchsia-300 hover:shadow-md ${selected === p.id ? "border-fuchsia-300 bg-fuchsia-50/60" : "border-slate-100 bg-white"}`}>
+              <div className="min-w-0"><p className="font-semibold text-slate-900">{p.fullName}</p><p className="mt-1 truncate text-xs text-slate-500">ת״ז {p.nationalId ?? "לא נמצא"} · {p.phone ?? "טלפון לא נמצא"}</p><p className="mt-1 flex items-center gap-1 truncate text-xs text-slate-400"><MapPin size={12}/>{p.address ?? "כתובת לא נמצאה"}</p></div>
+              <span className="shrink-0 rounded-full bg-[#20102b] px-3 py-2 text-xs text-white">פתח עץ</span>
+            </button>) : <div className="rounded-2xl bg-slate-50 p-7 text-center text-sm text-slate-500">לא נמצאה התאמה. אפשר לנסות פרטים אחרים או חיפוש מצומצם יותר.</div>}
+          </CardContent>
+        </Card>
+        <Card className="border-0 bg-white/80 shadow-sm"><CardHeader><CardTitle className="text-base">איך לקרוא את התוצאה</CardTitle></CardHeader><CardContent className="space-y-4 text-sm text-slate-600"><div className="flex gap-3"><ShieldCheck className="shrink-0 text-emerald-600" size={18}/><p><strong className="text-slate-900">Verified</strong> — התאמה לפי מזהה או קשר שמופיע במקור.</p></div><div className="flex gap-3"><GitBranch className="shrink-0 text-fuchsia-600" size={18}/><p>העץ מוצג עבור התוצאה שנבחרה; אפשר לבחור אדם אחר כדי למרכז אותו.</p></div><div className="flex gap-3"><Database className="shrink-0 text-cyan-600" size={18}/><p>הייצוא כולל את כל עמודי תוצאות החיפוש ואת הקשרים המתועדים של האדם שבמרכז העץ.</p></div></CardContent></Card>
       </section>}
 
       {selected && activePerson && familyData && <section className="space-y-4">

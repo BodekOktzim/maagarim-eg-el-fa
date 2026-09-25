@@ -88,7 +88,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
   const relationships = data.relationships;
   const central = get(centralId);
 
-  const { fatherId, motherId, siblingIds, childIds, fatherSiblings, motherSiblings, fatherGrandparents, motherGrandparents, cousinsBySide } = useMemo(() => {
+  const { fatherId, motherId, siblingIds, childIds, coParentIds, fatherSiblings, motherSiblings, fatherGrandparents, motherGrandparents, cousinsBySide } = useMemo(() => {
     const parentRels = relationships.filter((rel) => rel.type === "PARENT" && rel.personAId === centralId);
     const fatherRel = parentRels.find((rel) => rel.evidence?.field === "father");
     const motherRel = parentRels.find((rel) => rel.evidence?.field === "mother");
@@ -102,6 +102,9 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
       if (rel.personBId === centralId) siblingSet.add(rel.personAId);
     });
     const children = relationships.filter((rel) => rel.type === "PARENT" && rel.personBId === centralId).map((rel) => rel.personAId);
+    const coParents = unique(children.flatMap((childId) => relationships
+      .filter((rel) => rel.type === "PARENT" && rel.personAId === childId && rel.personBId !== centralId)
+      .map((rel) => rel.personBId)));
 
     const siblingsOf = (personId?: string) => {
       if (!personId) return [];
@@ -126,6 +129,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
       motherId: resolvedMotherId,
       siblingIds: Array.from(siblingSet),
       childIds: unique(children),
+      coParentIds: coParents,
       fatherSiblings: fatherSideSiblings,
       motherSiblings: motherSideSiblings,
       fatherGrandparents: parentsOf(resolvedFatherId),
@@ -185,7 +189,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
           <div className="tree-connector" />
           <div className="tree-caption">בן/בת זוג וילדים</div>
           <NodeRow>
-            <EmptyBranch label="בן/בת זוג: לא נמצא קשר מתועד" />
+            {coParentIds.length ? renderPeople(coParentIds, "הורה נוסף/ה לילד/ה") : <EmptyBranch label="לא נמצא בן/בת זוג או הורה משותף מתועד" />}
             {renderPeople(childIds, "ילד/ה")}
           </NodeRow>
 
