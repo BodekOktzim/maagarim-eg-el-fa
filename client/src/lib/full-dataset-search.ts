@@ -1,6 +1,7 @@
 const RECORD_BYTES = 16;
 const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/main";
 const INDEX_ROOT = MEDIA_ROOT;
+const RAW_INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/main";
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
@@ -175,11 +176,15 @@ async function getExtensionManifest(): Promise<ExtensionManifest> {
 
 async function getByteRange(url: string, start: number, endInclusive: number, label: string): Promise<ArrayBuffer> {
   if (endInclusive < start) return new ArrayBuffer(0);
-  const response = await fetch(url, {
+  const request = (target: string) => fetch(target, {
     headers: { Range: `bytes=${start}-${endInclusive}` },
     cache: "no-store",
     credentials: "omit",
   });
+  let response = await request(url);
+  if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
+    response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
+  }
   if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
   return response.arrayBuffer();
 }
