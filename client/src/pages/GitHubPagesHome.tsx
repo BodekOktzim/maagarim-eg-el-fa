@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import {
@@ -13,8 +13,24 @@ import {
 
 const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
 const SESSION_KEY = "maagarim-pages-unlocked-v2";
+const SESSION_TTL_MS = 30 * 60 * 1000;
 type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
+
+function readSessionStart() {
+  const raw = sessionStorage.getItem(SESSION_KEY);
+  if (raw === "1") {
+    const migratedAt = Date.now();
+    sessionStorage.setItem(SESSION_KEY, String(migratedAt));
+    return migratedAt;
+  }
+  const startedAt = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || Date.now() - startedAt >= SESSION_TTL_MS) {
+    sessionStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+  return startedAt;
+}
 
 async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value);
@@ -23,7 +39,8 @@ async function sha256(value: string) {
 }
 
 export default function GitHubPagesHome() {
-  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(SESSION_KEY) === "1");
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(() => readSessionStart());
+  const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [mode, setMode] = useState<SearchMode>("national-id");
@@ -46,19 +63,27 @@ export default function GitHubPagesHome() {
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
     if (await sha256(password) !== PASSWORD_HASH) { setPasswordError("הסיסמה לא נכונה."); return; }
-    sessionStorage.setItem(SESSION_KEY, "1");
+    const startedAt = Date.now();
+    sessionStorage.setItem(SESSION_KEY, String(startedAt));
     setPassword("");
-    setUnlocked(true);
+    setSessionStartedAt(startedAt);
   };
 
   const lock = () => {
     sessionStorage.removeItem(SESSION_KEY);
-    setUnlocked(false);
+    setSessionStartedAt(null);
     setResults([]);
     setSearched(false);
     setLastQuery("");
     clearTree();
   };
+
+  useEffect(() => {
+    if (sessionStartedAt === null) return;
+    const remaining = SESSION_TTL_MS - (Date.now() - sessionStartedAt);
+    const timeout = window.setTimeout(lock, Math.max(0, remaining));
+    return () => window.clearTimeout(timeout);
+  }, [sessionStartedAt]);
 
   const switchMode = (next: SearchMode) => {
     setMode(next);
