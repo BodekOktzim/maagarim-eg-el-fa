@@ -181,8 +181,8 @@ def build_facebook(indexes: dict[str, object]) -> None:
             if phone:
                 write_post(outputs["phone-facebook-candidate"], hash32(phone), row_offset, len(line))
                 counts["phone-facebook-candidate"] += 1
-            if values[0].isdigit() and len(values[0]) <= 18:
-                fbid_out.write(FBID.pack(int(values[0]), row_offset, len(line)))
+            if values[1].isdigit() and len(values[1]) <= 18:
+                fbid_out.write(FBID.pack(int(values[1]), row_offset, len(line)))
                 fbid_count += 1
     for key, count in counts.items():
         indexes[key] = {"source": "Facebook (שדות מועמדים)", "dataFile": "Facebook.txt", "records": count, "indexFile": paths[key].name, "kind": "postings", "confidence": "candidate"}
