@@ -177,7 +177,7 @@ def build_facebook(indexes: dict[str, object]) -> None:
                 for gram in bigrams(text):
                     write_post(outputs[key], hash32(gram), row_offset, len(line))
                     counts[key] += 1
-            phone = phone_digits(values[11])
+            phone = phone_digits(values[0])
             if phone:
                 write_post(outputs["phone-facebook-candidate"], hash32(phone), row_offset, len(line))
                 counts["phone-facebook-candidate"] += 1

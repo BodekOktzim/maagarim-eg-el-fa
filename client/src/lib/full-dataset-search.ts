@@ -332,7 +332,7 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
   return {
     source: "Facebook (התאמה מועמדת)", sourceKey: source.key, confidence: "candidate-id-field", nationalId: displayId(fields[1]) ?? target,
     firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "רשומת מקור — שדות לא ממופים",
-    phone: fields[11] || undefined, facebookId: fields[0] || undefined,
+    phone: fields[0] || undefined, facebookId: fields[1] || undefined,
   };
 }
 

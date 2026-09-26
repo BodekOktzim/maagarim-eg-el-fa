@@ -131,13 +131,13 @@
     "phone-facebook-candidate": {
       "source": "Facebook (שדות מועמדים)",
       "dataFile": "Facebook.txt",
-      "records": 150317,
+      "records": 3956428,
       "indexFile": "phone-facebook-candidate.bin",
       "kind": "postings",
       "confidence": "candidate",
-      "indexBytes": 2405072,
+      "indexBytes": 63302848,
       "sparseFile": "phone-facebook-candidate.sparse.bin",
-      "sparseBytes": 444,
+      "sparseBytes": 11592,
       "blockRecords": 4096
     },
     "facebook-id": {
