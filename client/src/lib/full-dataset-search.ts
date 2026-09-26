@@ -128,8 +128,12 @@ function parseDelimitedRow(line: string, delimiter: string, quote: string) {
       if (quoted && line[i + 1] === quote) {
         value += quote;
         i += 1;
+      } else if (quoted) {
+        quoted = false;
+      } else if (value.length === 0) {
+        quoted = true;
       } else {
-        quoted = !quoted;
+        value += char;
       }
     } else if (char === delimiter && !quoted) {
       fields.push(value);
