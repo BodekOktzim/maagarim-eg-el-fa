@@ -375,6 +375,13 @@ export function mergeHits(hits: SearchHit[]): SearchHit[] {
   });
 }
 
+export function mergePhoneHits(hits: SearchHit[]): SearchHit[] {
+  const primary = mergeHits(hits.filter((hit) => hit.sourceKey !== "facebook"));
+  const facebook = hits.filter((hit) => hit.sourceKey === "facebook");
+  const uniqueFacebook = Array.from(new Map(facebook.map((hit) => [`${hit.facebookId ?? ""}:${hit.nationalId}:${hit.fullName}`, hit])).values());
+  return [...primary, ...uniqueFacebook];
+}
+
 async function fetchSourceRow(source: IndexSource, record: RowPointer, target: string) {
   const cacheKey = `${source.key}:${record.offset}:${record.length}`;
   if (!rowCache.has(cacheKey)) {
@@ -533,7 +540,7 @@ export async function searchFullDatasetsByPhone(input: string) {
     const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
     return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone))).map((hit) => ({ ...hit, confidence: "phone-match" as const }));
   }));
-  return mergeHits(all.flat());
+  return mergePhoneHits(all.flat());
 }
 
 export async function searchFullDatasetsByFacebookId(input: string) {

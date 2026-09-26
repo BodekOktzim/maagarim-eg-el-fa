@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentAgeFromBirthDate, mergeHits, type SearchHit } from "./full-dataset-search";
+import { currentAgeFromBirthDate, mergeHits, mergePhoneHits, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -43,5 +43,16 @@ describe("unified AGRON/Elector result merging", () => {
     ]);
     expect(merged.fatherId).toBe("000000001");
     expect(merged.motherId).toBe("000000002");
+  });
+
+  it("merges AGRON and Elector but keeps Facebook as a separate phone result", () => {
+    const results = mergePhoneHits([
+      hit({ source: "AGRON 2006", phone: "0501111111" }),
+      hit({ source: "Elector", sourceKey: "elector", phone: "0502222222" }),
+      hit({ source: "Facebook", sourceKey: "facebook", facebookId: "123", phone: "0503333333" }),
+    ]);
+    expect(results).toHaveLength(2);
+    expect(results.some((result) => result.sourceKey === "facebook")).toBe(true);
+    expect(results.filter((result) => result.sourceKey !== "facebook")).toHaveLength(1);
   });
 });
