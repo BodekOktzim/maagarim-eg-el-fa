@@ -1,6 +1,6 @@
 const RECORD_BYTES = 16;
 const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/main";
-const INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/main";
+const INDEX_ROOT = MEDIA_ROOT;
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
