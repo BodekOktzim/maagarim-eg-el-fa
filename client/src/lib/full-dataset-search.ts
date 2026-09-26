@@ -236,7 +236,7 @@ async function readPostingGroup(meta: ExtensionIndex, key: number, cap: number, 
   if (count <= 0) return { count: 0, records: [] as RowPointer[] };
   if (count > cap && !allowPartial) throw new Error("נמצאו יותר מדי מועמדים לפי מפתח זה. הוסיפו שם משפחה, יישוב או גיל כדי לצמצם את החיפוש.");
   const sampledEnd = allowPartial ? Math.min(range.endOrdinal, range.startOrdinal + cap) : range.endOrdinal;
-  const buffer = await getByteRange(`${MEDIA_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 16, sampledEnd * 16 - 1, meta.indexFile);
+  const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 16, sampledEnd * 16 - 1, meta.indexFile);
   if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${meta.indexFile}.`);
   const view = new DataView(buffer);
   const records: RowPointer[] = [];
@@ -252,7 +252,7 @@ async function readFacebookIdGroup(meta: ExtensionIndex, target: bigint, cap: nu
   const count = range.endOrdinal - range.startOrdinal;
   if (count <= 0) return [] as RowPointer[];
   if (count > cap) throw new Error("נמצאו יותר מדי התאמות מספריות במקור Facebook. צמצמו את החיפוש.");
-  const buffer = await getByteRange(`${MEDIA_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 20, range.endOrdinal * 20 - 1, meta.indexFile);
+  const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 20, range.endOrdinal * 20 - 1, meta.indexFile);
   const view = new DataView(buffer);
   const records: RowPointer[] = [];
   for (let byte = 0; byte + 20 <= buffer.byteLength; byte += 20) {
