@@ -110,16 +110,18 @@
 @layer components {
   .container { width: 100%; margin-left: auto; margin-right: auto; padding-left: 1rem; padding-right: 1rem; }
   .flex { min-height: 0; min-width: 0; }
-  .tree-caption { color: rgba(255, 255, 255, 0.4); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-align: center; text-transform: uppercase; }
-  .tree-connector { height: 28px; margin: 0 auto; width: 1px; background: linear-gradient(to bottom, rgba(232, 121, 249, 0.6), rgba(103, 232, 249, 0.28)); position: relative; }
-  .tree-connector::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 9px; height: 9px; transform: translate(-50%, 50%) rotate(45deg); border-right: 1px solid rgba(232, 121, 249, 0.6); border-bottom: 1px solid rgba(232, 121, 249, 0.6); }
-  .family-tree-shell { background-image: radial-gradient(circle at 50% 0%, rgba(217, 70, 239, 0.14), transparent 38%), radial-gradient(circle at 0% 100%, rgba(34, 211, 238, 0.07), transparent 30%); }
+  .tree-caption { color: rgba(255, 224, 234, 0.58); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-align: center; text-transform: uppercase; }
+  .tree-connector { height: 28px; margin: 0 auto; width: 1px; background: linear-gradient(to bottom, rgba(255, 75, 145, 0.78), rgba(245, 147, 181, 0.32)); position: relative; }
+  .tree-connector::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 9px; height: 9px; transform: translate(-50%, 50%) rotate(45deg); border-right: 1px solid rgba(255, 75, 145, 0.78); border-bottom: 1px solid rgba(255, 75, 145, 0.78); }
+  .family-tree-shell { background-image: radial-gradient(circle at 50% 0%, rgba(210, 37, 99, 0.18), transparent 38%), radial-gradient(circle at 0% 100%, rgba(160, 40, 85, 0.09), transparent 30%); }
   .family-node-central { animation: node-pulse 3s ease-in-out infinite; }
-  .tree-scroll { scrollbar-color: rgba(232, 121, 249, 0.5) rgba(255,255,255,0.05); scrollbar-width: thin; }
+  .tree-scroll { scrollbar-color: rgba(255, 94, 157, 0.6) rgba(255,255,255,0.05); scrollbar-width: thin; }
   .search-hero { background-image: radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.18), transparent 30%), radial-gradient(circle at 10% 100%, rgba(34, 211, 238, 0.13), transparent 32%); }
+  .family-pair-detail-grid { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; width: max-content; }
+  .family-detail-panel { width: min(260px, 70vw); }
 }
 
-@keyframes node-pulse { 0%, 100% { box-shadow: 0 0 28px rgba(244, 114, 182, 0.22); } 50% { box-shadow: 0 0 42px rgba(244, 114, 182, 0.4); } }
+@keyframes node-pulse { 0%, 100% { box-shadow: 0 0 28px rgba(255, 75, 145, 0.2); } 50% { box-shadow: 0 0 42px rgba(255, 75, 145, 0.42); } }
 @media (prefers-reduced-motion: reduce) { .family-node-central { animation: none; } }
 @media (min-width: 640px) { .container { padding-left: 1.5rem; padding-right: 1.5rem; } }
 @media (min-width: 1024px) { .container { padding-left: 2rem; padding-right: 2rem; max-width: 1280px; } }

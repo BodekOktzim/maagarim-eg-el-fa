@@ -1,0 +1,155 @@
+{
+  "format": "fnv1a32-bigram-or-exact-numeric-range-index; little-endian",
+  "postRecordBytes": 16,
+  "facebookIdRecordBytes": 20,
+  "edgeRecordBytes": 20,
+  "blockRecords": 4096,
+  "indexes": {
+    "text-agron-first": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 35667081,
+      "indexFile": "text-agron-first.bin",
+      "kind": "postings",
+      "indexBytes": 570673296,
+      "sparseFile": "text-agron-first.sparse.bin",
+      "sparseBytes": 104496,
+      "blockRecords": 4096
+    },
+    "text-agron-last": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 39719544,
+      "indexFile": "text-agron-last.bin",
+      "kind": "postings",
+      "indexBytes": 635512704,
+      "sparseFile": "text-agron-last.sparse.bin",
+      "sparseBytes": 116376,
+      "blockRecords": 4096
+    },
+    "text-agron-city": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 50278056,
+      "indexFile": "text-agron-city.bin",
+      "kind": "postings",
+      "indexBytes": 804448896,
+      "sparseFile": "text-agron-city.sparse.bin",
+      "sparseBytes": 147300,
+      "blockRecords": 4096
+    },
+    "phone-agron": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 2520593,
+      "indexFile": "phone-agron.bin",
+      "kind": "postings",
+      "indexBytes": 40329488,
+      "sparseFile": "phone-agron.sparse.bin",
+      "sparseBytes": 7392,
+      "blockRecords": 4096
+    },
+    "age-agron": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 8855065,
+      "indexFile": "age-agron.bin",
+      "kind": "age",
+      "indexBytes": 141681040,
+      "sparseFile": "age-agron.sparse.bin",
+      "sparseBytes": 25944,
+      "blockRecords": 4096
+    },
+    "family-agron-parent-child": {
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "records": 10635676,
+      "indexFile": "family-agron-parent-child.bin",
+      "kind": "edges",
+      "indexBytes": 212713520,
+      "sparseFile": "family-agron-parent-child.sparse.bin",
+      "sparseBytes": 31164,
+      "blockRecords": 4096
+    },
+    "text-elector-first": {
+      "source": "Elector",
+      "dataFile": "Elector.txt",
+      "records": 25773837,
+      "indexFile": "text-elector-first.bin",
+      "kind": "postings",
+      "indexBytes": 412381392,
+      "sparseFile": "text-elector-first.sparse.bin",
+      "sparseBytes": 75516,
+      "blockRecords": 4096
+    },
+    "text-elector-last": {
+      "source": "Elector",
+      "dataFile": "Elector.txt",
+      "records": 27964194,
+      "indexFile": "text-elector-last.bin",
+      "kind": "postings",
+      "indexBytes": 447427104,
+      "sparseFile": "text-elector-last.sparse.bin",
+      "sparseBytes": 81936,
+      "blockRecords": 4096
+    },
+    "phone-elector": {
+      "source": "Elector",
+      "dataFile": "Elector.txt",
+      "records": 41616,
+      "indexFile": "phone-elector.bin",
+      "kind": "postings",
+      "indexBytes": 665856,
+      "sparseFile": "phone-elector.sparse.bin",
+      "sparseBytes": 132,
+      "blockRecords": 4096
+    },
+    "text-facebook-first-candidate": {
+      "source": "Facebook (שדות מועמדים)",
+      "dataFile": "Facebook.txt",
+      "records": 15281438,
+      "indexFile": "text-facebook-first-candidate.bin",
+      "kind": "postings",
+      "confidence": "candidate",
+      "indexBytes": 244503008,
+      "sparseFile": "text-facebook-first-candidate.sparse.bin",
+      "sparseBytes": 44772,
+      "blockRecords": 4096
+    },
+    "text-facebook-last-candidate": {
+      "source": "Facebook (שדות מועמדים)",
+      "dataFile": "Facebook.txt",
+      "records": 19371514,
+      "indexFile": "text-facebook-last-candidate.bin",
+      "kind": "postings",
+      "confidence": "candidate",
+      "indexBytes": 309944224,
+      "sparseFile": "text-facebook-last-candidate.sparse.bin",
+      "sparseBytes": 56760,
+      "blockRecords": 4096
+    },
+    "phone-facebook-candidate": {
+      "source": "Facebook (שדות מועמדים)",
+      "dataFile": "Facebook.txt",
+      "records": 150317,
+      "indexFile": "phone-facebook-candidate.bin",
+      "kind": "postings",
+      "confidence": "candidate",
+      "indexBytes": 2405072,
+      "sparseFile": "phone-facebook-candidate.sparse.bin",
+      "sparseBytes": 444,
+      "blockRecords": 4096
+    },
+    "facebook-id": {
+      "source": "Facebook",
+      "dataFile": "Facebook.txt",
+      "records": 3956428,
+      "indexFile": "facebook-id.bin",
+      "kind": "facebook-id",
+      "indexBytes": 79128560,
+      "sparseFile": "facebook-id.sparse.bin",
+      "sparseBytes": 15456,
+      "blockRecords": 4096
+    }
+  }
+}

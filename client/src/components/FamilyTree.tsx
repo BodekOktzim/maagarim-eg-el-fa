@@ -1,6 +1,6 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { GitBranch, ShieldCheck, UserRound, UsersRound } from "lucide-react";
-import { useMemo } from "react";
+import { GitBranch, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
 
 export type TreePerson = {
   id: string;
@@ -10,6 +10,8 @@ export type TreePerson = {
   lastName?: string;
   phone?: string;
   address?: string;
+  city?: string;
+  age?: string;
   birthDate?: string;
   sourceNames?: string[];
 };
@@ -35,175 +37,270 @@ type FamilyTreeProps = {
   onSelect: (id: string) => void;
 };
 
-function unique(values: string[]) {
-  return Array.from(new Set(values));
-}
+type DetailPlacement = "below" | "left" | "right";
 
-function PersonNode({
+const unique = (values: string[]) => Array.from(new Set(values));
+
+function PersonCard({
   person,
   relation,
   central = false,
-  onSelect,
+  selected = false,
+  onClick,
 }: {
   person: TreePerson;
   relation: string;
   central?: boolean;
-  onSelect: (id: string) => void;
+  selected?: boolean;
+  onClick: () => void;
 }) {
+  const initials = person.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("");
   return (
     <button
       type="button"
-      onClick={() => onSelect(person.id)}
-      className={`family-node group w-[186px] shrink-0 rounded-2xl border p-3 text-right transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300 ${central ? "family-node-central border-fuchsia-300/80 bg-fuchsia-950/80 shadow-[0_0_34px_rgba(244,114,182,0.32)]" : "border-white/15 bg-[#24172f]/90 hover:border-cyan-300/60 hover:bg-[#2e1c3d]"}`}
+      onClick={onClick}
+      aria-pressed={selected}
       aria-label={`פתח פרטים עבור ${person.fullName}`}
+      className={`family-node group w-[178px] shrink-0 rounded-[19px] border p-3 text-right transition duration-200 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff4b91] sm:w-[194px] ${central ? "family-node-central border-[#ff478c]/90 bg-[#371427] shadow-[0_0_35px_rgba(255,53,130,0.3)]" : selected ? "border-[#ff6ba3] bg-[#3b172d]" : "border-[#e7679a]/30 bg-[#23121e]/95 hover:border-[#ff6ba3]/80 hover:bg-[#301526]"}`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${central ? "bg-fuchsia-300/20 text-fuchsia-100" : "bg-cyan-300/10 text-cyan-200"}`}>
-          {relation}
-        </span>
-        {central ? <GitBranch size={14} className="text-fuchsia-200" /> : <UserRound size={14} className="text-cyan-200/70" />}
+        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${central ? "bg-[#ff4b91]/20 text-[#ffb6d3]" : "bg-[#ff4b91]/10 text-[#ffa5c8]"}`}>{relation}</span>
+        <span className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold ${central ? "bg-[#ff4189] text-white" : "bg-[#ff4b91]/15 text-[#ffc3da]"}`}>{initials || <UserRound size={13}/>}</span>
       </div>
       <p className="truncate text-sm font-semibold text-white">{person.fullName || "ללא שם"}</p>
       <p className="mt-1 truncate font-mono text-[11px] text-white/60">ת״ז: {person.nationalId ?? "לא נמצא"}</p>
-      {person.birthDate && <p className="mt-1 text-[11px] text-white/45">לידה: {person.birthDate}</p>}
+      {person.age && <p className="mt-1 text-[11px] text-white/45">גיל במקור: {person.age}</p>}
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-2 text-[10px] text-white/45">
         <span className="truncate">{person.sourceNames?.join(" · ") || "מקור לא נמצא"}</span>
-        <ShieldCheck size={12} className="shrink-0 text-emerald-300/80" />
+        <ShieldCheck size={12} className="shrink-0 text-[#7ee3ba]" />
       </div>
     </button>
   );
 }
 
-function EmptyBranch({ label }: { label: string }) {
-  return <div className="flex min-h-[74px] w-[186px] shrink-0 items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-4 text-center text-xs text-white/40">{label}</div>;
+function EmptyNode({ label }: { label: string }) {
+  return <div className="flex min-h-[104px] w-[178px] shrink-0 items-center justify-center rounded-[19px] border border-dashed border-white/15 bg-white/[0.025] px-4 text-center text-xs text-white/40 sm:w-[194px]">{label}</div>;
 }
 
-function NodeRow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`tree-node-row flex items-stretch justify-center gap-4 ${className}`}>{children}</div>;
+function DetailPanel({ person, onClose, onCenter }: { person: TreePerson; onClose: () => void; onCenter: () => void }) {
+  const rows = [
+    ["תעודת זהות", person.nationalId],
+    ["טלפון", person.phone],
+    ["יישוב", person.city],
+    ["כתובת", person.address],
+    ["גיל במקור", person.age],
+    ["תאריך לידה", person.birthDate],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+  return (
+    <aside className="family-detail-panel min-w-[214px] max-w-[300px] rounded-[18px] border border-[#fa649c]/30 bg-[#281420] p-4 text-right shadow-[0_16px_40px_rgba(0,0,0,0.28)]" aria-label={`פרטים מלאים: ${person.fullName}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#ff8db7]">פרטים מלאים</p><h4 className="mt-1 break-words text-sm font-bold text-white">{person.fullName}</h4></div>
+        <button type="button" onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white" aria-label="סגור פרטים"><X size={15}/></button>
+      </div>
+      <dl className="mt-3 space-y-2 border-t border-white/10 pt-3">
+        {rows.length ? rows.map(([label, value]) => <div key={label} className="grid grid-cols-[78px_1fr] gap-2 text-xs"><dt className="text-white/45">{label}</dt><dd dir="auto" className="break-words text-white/85">{value}</dd></div>) : <p className="text-xs text-white/45">לא נמצאו פרטים נוספים ברשומות הזמינות.</p>}
+      </dl>
+      {person.sourceNames?.length ? <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">{person.sourceNames.map((source) => <Badge key={source} className="border border-[#f575a2]/20 bg-[#f575a2]/10 text-[10px] text-[#ffc0d8] hover:bg-[#f575a2]/10">{source}</Badge>)}</div> : null}
+      <button type="button" onClick={onCenter} className="mt-3 min-h-9 w-full rounded-xl border border-[#ff6ba3]/25 bg-[#ff4b91]/10 px-3 text-xs font-semibold text-[#ffc0d8] transition hover:bg-[#ff4b91]/20">מרכז את העץ באדם זה</button>
+    </aside>
+  );
 }
 
-export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProps) {
-  const index = useMemo(() => new Map(data.people.map((person) => [person.id, person])), [data.people]);
-  const get = (id?: string) => (id ? index.get(id) : undefined);
-  const relationships = data.relationships;
-  const central = get(centralId);
+function PeopleGroup({
+  ids,
+  relation,
+  personById,
+  centralId,
+  selectedId,
+  onSelect,
+  onCenter,
+  onClose,
+  emptyLabel,
+  central = false,
+}: {
+  ids: string[];
+  relation: string;
+  personById: Map<string, TreePerson>;
+  centralId?: string;
+  selectedId: string | null;
+  onSelect: (id: string, placement: DetailPlacement) => void;
+  onCenter: (id: string) => void;
+  onClose: () => void;
+  emptyLabel: string;
+  central?: boolean;
+}) {
+  const people = unique(ids).map((id) => personById.get(id)).filter((person): person is TreePerson => Boolean(person));
+  const selectedIndex = people.findIndex((person) => person.id === selectedId);
+  const selectedPerson = selectedIndex >= 0 ? people[selectedIndex] : null;
+  const sideLayout = people.length === 2 && Boolean(selectedPerson);
 
-  const { fatherId, motherId, siblingIds, childIds, coParentIds, fatherSiblings, motherSiblings, fatherGrandparents, motherGrandparents, cousinsBySide } = useMemo(() => {
-    const parentRels = relationships.filter((rel) => rel.type === "PARENT" && rel.personAId === centralId);
-    const fatherRel = parentRels.find((rel) => rel.evidence?.field === "father");
-    const motherRel = parentRels.find((rel) => rel.evidence?.field === "mother");
-    const fallback = parentRels.filter((rel) => rel.id !== fatherRel?.id && rel.id !== motherRel?.id);
-    const resolvedFatherId = fatherRel?.personBId ?? fallback[0]?.personBId;
-    const resolvedMotherId = motherRel?.personBId ?? fallback[1]?.personBId;
-    const siblingSet = new Set<string>();
-    relationships.forEach((rel) => {
-      if (rel.type !== "SIBLING") return;
-      if (rel.personAId === centralId) siblingSet.add(rel.personBId);
-      if (rel.personBId === centralId) siblingSet.add(rel.personAId);
-    });
-    const children = relationships.filter((rel) => rel.type === "PARENT" && rel.personBId === centralId).map((rel) => rel.personAId);
-    const coParents = unique(children.flatMap((childId) => relationships
-      .filter((rel) => rel.type === "PARENT" && rel.personAId === childId && rel.personBId !== centralId)
-      .map((rel) => rel.personBId)));
+  if (!people.length) return <EmptyNode label={emptyLabel} />;
 
-    const siblingsOf = (personId?: string) => {
-      if (!personId) return [];
-      const ids = new Set<string>();
-      relationships.forEach((rel) => {
-        if (rel.type !== "SIBLING") return;
-        if (rel.personAId === personId) ids.add(rel.personBId);
-        if (rel.personBId === personId) ids.add(rel.personAId);
-      });
-      return Array.from(ids);
-    };
-    const parentsOf = (personId?: string) => {
-      if (!personId) return [];
-      return relationships.filter((rel) => rel.type === "PARENT" && rel.personAId === personId).map((rel) => rel.personBId);
-    };
-    const cousinsOf = (auntsAndUncles: string[]) => unique(auntsAndUncles.flatMap((id) => relationships.filter((rel) => rel.type === "PARENT" && rel.personBId === id).map((rel) => rel.personAId)));
-
-    const fatherSideSiblings = siblingsOf(resolvedFatherId);
-    const motherSideSiblings = siblingsOf(resolvedMotherId);
-    return {
-      fatherId: resolvedFatherId,
-      motherId: resolvedMotherId,
-      siblingIds: Array.from(siblingSet),
-      childIds: unique(children),
-      coParentIds: coParents,
-      fatherSiblings: fatherSideSiblings,
-      motherSiblings: motherSideSiblings,
-      fatherGrandparents: parentsOf(resolvedFatherId),
-      motherGrandparents: parentsOf(resolvedMotherId),
-      cousinsBySide: { father: cousinsOf(fatherSideSiblings), mother: cousinsOf(motherSideSiblings) },
-    };
-  }, [centralId, relationships]);
-
-  const person = (id: string) => get(id);
-  const renderPeople = (ids: string[], relation: string) => {
-    const people = unique(ids).map(person).filter((value): value is TreePerson => Boolean(value));
-    return people.length ? people.map((item) => <PersonNode key={item.id} person={item} relation={relation} onSelect={onSelect} />) : <EmptyBranch label="לא נמצאה רשומה מאומתת" />;
-  };
-
-  if (!central) {
-    return <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-white/60">לא נמצאה רשומה מאומתת לעץ הזה.</div>;
+  if (sideLayout && selectedPerson) {
+    // In this RTL layout the first card is physically on the right; its detail panel opens to its right.
+    const rightPerson = people[0];
+    const leftPerson = people[1];
+    const detailOnRight = selectedPerson.id === rightPerson.id;
+    return (
+      <div className="family-pair-detail-grid" dir="ltr">
+        {detailOnRight ? <PersonCard person={leftPerson} relation={relation} selected={false} onClick={() => onSelect(leftPerson.id, "left")}/> : null}
+        {detailOnRight ? <PersonCard person={rightPerson} relation={relation} selected onClick={() => onSelect(rightPerson.id, "right")}/> : null}
+        {detailOnRight ? <DetailPanel person={selectedPerson} onClose={onClose} onCenter={() => onCenter(selectedPerson.id)}/> : null}
+        {!detailOnRight ? <DetailPanel person={selectedPerson} onClose={onClose} onCenter={() => onCenter(selectedPerson.id)}/> : null}
+        {!detailOnRight ? <PersonCard person={leftPerson} relation={relation} selected onClick={() => onSelect(leftPerson.id, "left")}/> : null}
+        {!detailOnRight ? <PersonCard person={rightPerson} relation={relation} selected={false} onClick={() => onSelect(rightPerson.id, "right")}/> : null}
+      </div>
+    );
   }
 
   return (
-    <section className="family-tree-shell overflow-hidden rounded-[28px] border border-fuchsia-300/15 bg-[#150d1e] text-white shadow-[0_24px_80px_rgba(21,13,30,0.35)]">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-7">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/80"><GitBranch size={14} /> עץ קשרים מאומת</div>
-          <p className="mt-1 text-sm text-white/55">לחיצה על כרטיס פותחת אדם אחר כמרכז. קשרים מוצגים רק עם ראיה במקור.</p>
-        </div>
-        <Badge className="border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10"><ShieldCheck size={13} className="ml-1" /> VERIFIED / SOURCE-BACKED</Badge>
-      </div>
+    <div className="flex flex-wrap items-start justify-center gap-3">
+      {people.map((person, index) => <PersonCard
+        key={person.id}
+        person={person}
+        relation={person.id === centralId ? "האדם המרכזי" : relation}
+        central={central && person.id === centralId}
+        selected={selectedId === person.id}
+        onClick={() => onSelect(person.id, people.length <= 2 ? (index === 0 ? "right" : "left") : "below")}
+      />)}
+      {selectedPerson && <div className="basis-full"><div className="mx-auto mt-1 max-w-[440px]"><DetailPanel person={selectedPerson} onClose={onClose} onCenter={() => onCenter(selectedPerson.id)}/></div></div>}
+    </div>
+  );
+}
 
-      <div className="tree-scroll overflow-x-auto px-4 py-7 sm:px-8">
-        <div className="tree-stage mx-auto min-w-[980px] max-w-[1240px] space-y-5" dir="rtl">
-          <div className="tree-caption">דור קודם · סבא וסבתא</div>
-          <div className="grid grid-cols-2 gap-8 xl:gap-20">
-            <div className="tree-side-branch space-y-3 rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.025] p-4">
-              <div className="flex items-center justify-between text-xs font-semibold text-cyan-200"><span>צד האב</span><span className="text-[10px] text-white/35">דור +2</span></div>
-              <NodeRow>{renderPeople(fatherGrandparents, "סבא/סבתא")}</NodeRow>
-            </div>
-            <div className="tree-side-branch space-y-3 rounded-2xl border border-fuchsia-300/10 bg-fuchsia-300/[0.025] p-4">
-              <div className="flex items-center justify-between text-xs font-semibold text-fuchsia-200"><span>צד האם</span><span className="text-[10px] text-white/35">דור +2</span></div>
-              <NodeRow>{renderPeople(motherGrandparents, "סבא/סבתא")}</NodeRow>
-            </div>
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <div className="tree-caption">{children}</div>;
+}
+
+export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProps) {
+  const [detail, setDetail] = useState<{ id: string; placement: DetailPlacement } | null>(null);
+  useEffect(() => setDetail(null), [centralId]);
+  const personById = useMemo(() => new Map(data.people.map((person) => [person.id, person])), [data.people]);
+  const central = personById.get(centralId);
+  const relationships = data.relationships;
+  const adjacency = useMemo(() => {
+    const parents = new Map<string, { id: string; field?: string }[]>();
+    const children = new Map<string, string[]>();
+    const siblings = new Map<string, string[]>();
+    for (const relationship of relationships) {
+      if (relationship.type === "PARENT") {
+        const list = parents.get(relationship.personAId) ?? [];
+        list.push({ id: relationship.personBId, field: String(relationship.evidence?.field ?? "") || undefined });
+        parents.set(relationship.personAId, list);
+        const childList = children.get(relationship.personBId) ?? [];
+        childList.push(relationship.personAId);
+        children.set(relationship.personBId, childList);
+      }
+      if (relationship.type === "CHILD") {
+        const list = children.get(relationship.personAId) ?? [];
+        list.push(relationship.personBId);
+        children.set(relationship.personAId, list);
+      }
+      if (relationship.type === "SIBLING") {
+        const fromA = siblings.get(relationship.personAId) ?? [];
+        fromA.push(relationship.personBId);
+        siblings.set(relationship.personAId, fromA);
+        const fromB = siblings.get(relationship.personBId) ?? [];
+        fromB.push(relationship.personAId);
+        siblings.set(relationship.personBId, fromB);
+      }
+    }
+    return { parents, children, siblings };
+  }, [relationships]);
+
+  const family = useMemo(() => {
+    const parentLinks = adjacency.parents.get(centralId) ?? [];
+    const fatherId = parentLinks.find((link) => link.field === "father")?.id ?? parentLinks[0]?.id;
+    const motherId = parentLinks.find((link) => link.field === "mother")?.id ?? parentLinks[1]?.id;
+    const parentIds = unique([fatherId, motherId].filter((id): id is string => Boolean(id)));
+    const siblingIds = unique(adjacency.siblings.get(centralId) ?? []);
+    const childIds = unique(adjacency.children.get(centralId) ?? []);
+    const coParentIds = unique(childIds.flatMap((childId) => (adjacency.parents.get(childId) ?? []).map((link) => link.id)).filter((id) => id !== centralId));
+    const paternalGrandparents = fatherId ? unique((adjacency.parents.get(fatherId) ?? []).map((link) => link.id)) : [];
+    const maternalGrandparents = motherId ? unique((adjacency.parents.get(motherId) ?? []).map((link) => link.id)) : [];
+    const paternalAuntsUncles = fatherId ? unique(adjacency.siblings.get(fatherId) ?? []) : [];
+    const maternalAuntsUncles = motherId ? unique(adjacency.siblings.get(motherId) ?? []) : [];
+    const paternalCousins = unique(paternalAuntsUncles.flatMap((id) => adjacency.children.get(id) ?? []));
+    const maternalCousins = unique(maternalAuntsUncles.flatMap((id) => adjacency.children.get(id) ?? []));
+    const paternalGreatGrandparents = unique(paternalGrandparents.flatMap((id) => (adjacency.parents.get(id) ?? []).map((link) => link.id)));
+    const maternalGreatGrandparents = unique(maternalGrandparents.flatMap((id) => (adjacency.parents.get(id) ?? []).map((link) => link.id)));
+    return { fatherId, motherId, parentIds, siblingIds, childIds, coParentIds, paternalGrandparents, maternalGrandparents, paternalAuntsUncles, maternalAuntsUncles, paternalCousins, maternalCousins, paternalGreatGrandparents, maternalGreatGrandparents };
+  }, [adjacency, centralId]);
+
+  const selectPerson = (id: string, placement: DetailPlacement) => {
+    setDetail((current) => current?.id === id ? null : { id, placement });
+  };
+  const closeDetail = () => setDetail(null);
+
+  if (!central) return <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center text-sm text-white/60">לא נמצאה רשומה מאומתת לעץ הזה.</div>;
+
+  const renderGroup = (ids: string[], relation: string, emptyLabel: string, opts: { central?: boolean } = {}) => (
+    <PeopleGroup ids={ids} relation={relation} personById={personById} centralId={centralId} selectedId={detail?.id ?? null} onSelect={selectPerson} onCenter={onSelect} onClose={closeDetail} emptyLabel={emptyLabel} central={opts.central}/>
+  );
+
+  return (
+    <section className="family-tree-shell overflow-hidden rounded-[28px] border border-[#f06298]/20 bg-[#150d14] text-white shadow-[0_24px_80px_rgba(21,13,20,0.4)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-7">
+        <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#ff9fc1]"><GitBranch size={14}/> מפת קשרים משפחתיים</div><p className="mt-1 text-sm text-white/55">לחצו על כרטיס לפרטים; בכרטיס הפרטים אפשר לבחור למרכז את העץ באדם הזה.</p></div>
+        <Badge className="border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10"><ShieldCheck size={13} className="ml-1"/> VERIFIED / SOURCE-BACKED</Badge>
+      </div>
+      <div className="border-b border-[#f06298]/10 bg-[#23121d]/70 px-4 py-3 text-center text-xs text-[#f3bfd1]/65 lg:hidden">לתצוגת העץ הרחבה והנוחה ביותר מומלץ להשתמש במחשב. בטלפון אפשר לגלול לצדדים.</div>
+      <div className="tree-scroll overflow-x-auto px-3 py-6 sm:px-6 sm:py-8">
+        <div className="tree-stage mx-auto min-w-[1040px] max-w-[1480px] space-y-6" dir="rtl">
+          <div className="grid grid-cols-3 gap-5">
+            <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <SectionTitle>דור סבים · צד האב</SectionTitle>
+              <div className="space-y-3"><p className="text-center text-[10px] text-white/35">סבא וסבתא רבה</p>{renderGroup(family.paternalGreatGrandparents, "סבא/סבתא רבה", "לא נמצאו רשומות מאומתות")}</div>
+              <div className="tree-connector"/>
+              <div className="space-y-3"><p className="text-center text-[10px] text-white/35">סבא וסבתא</p>{renderGroup(family.paternalGrandparents, "סבא/סבתא", "לא נמצאו רשומות מאומתות")}</div>
+            </section>
+            <section className="flex flex-col items-center justify-center gap-4 rounded-[22px] border border-[#ff4b91]/20 bg-[#ff4b91]/[0.035] p-4">
+              <SectionTitle>דור ההורים</SectionTitle>
+              <div className="tree-connector" />
+              <p className="max-w-[220px] text-center text-xs leading-6 text-white/40">ההורים והדודים מוצגים יחד בשורה שמתחת</p>
+            </section>
+            <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <SectionTitle>דור סבים · צד האם</SectionTitle>
+              <div className="space-y-3"><p className="text-center text-[10px] text-white/35">סבא וסבתא רבה</p>{renderGroup(family.maternalGreatGrandparents, "סבא/סבתא רבה", "לא נמצאו רשומות מאומתות")}</div>
+              <div className="tree-connector"/>
+              <div className="space-y-3"><p className="text-center text-[10px] text-white/35">סבא וסבתא</p>{renderGroup(family.maternalGrandparents, "סבא/סבתא", "לא נמצאו רשומות מאומתות")}</div>
+            </section>
           </div>
 
-          <div className="tree-connector" />
-          <div className="tree-caption">הורים</div>
-          <NodeRow>
-            {fatherId && person(fatherId) ? <PersonNode person={person(fatherId)!} relation="אב" onSelect={onSelect} /> : <EmptyBranch label="אב לא נמצא" />}
-            {motherId && person(motherId) ? <PersonNode person={person(motherId)!} relation="אם" onSelect={onSelect} /> : <EmptyBranch label="אם לא נמצאה" />}
-          </NodeRow>
+          <div className="grid grid-cols-3 items-stretch gap-5">
+            <section className="tree-side-branch flex flex-col gap-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[#ffa2c3]"><UsersRound size={14}/> דודים ודודות · צד האב</div>
+              {renderGroup(family.paternalAuntsUncles, "דוד/ה", "אין רשומת אח/ות להורה")}
+            </section>
+            <section className="flex flex-col items-center justify-center gap-4 rounded-[22px] border border-[#ff4b91]/30 bg-[#2b1420]/70 p-4">
+              <SectionTitle>הורים</SectionTitle>
+              {renderGroup(family.parentIds, "הורה", "לא נמצאה רשומת הורה")}
+            </section>
+            <section className="tree-side-branch flex flex-col gap-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[#ffa2c3]"><UsersRound size={14}/> דודים ודודות · צד האם</div>
+              {renderGroup(family.maternalAuntsUncles, "דוד/ה", "אין רשומת אח/ות להורה")}
+            </section>
+          </div>
 
-          <div className="tree-connector" />
-          <div className="tree-caption">האדם המרכזי והאחים</div>
-          <NodeRow className="tree-siblings-row">
-            {renderPeople(siblingIds, "אח/ות")}
-            <PersonNode person={central} relation="האדם המרכזי" central onSelect={onSelect} />
-          </NodeRow>
-
-          <div className="tree-connector" />
-          <div className="tree-caption">בן/בת זוג וילדים</div>
-          <NodeRow>
-            {coParentIds.length ? renderPeople(coParentIds, "הורה נוסף/ה לילד/ה") : <EmptyBranch label="לא נמצא בן/בת זוג או הורה משותף מתועד" />}
-            {renderPeople(childIds, "ילד/ה")}
-          </NodeRow>
-
-          <div className="grid grid-cols-2 gap-8 pt-4 xl:gap-20">
-            <div className="tree-side-branch space-y-3 rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.025] p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-200"><UsersRound size={14} /> דודים מצד האב ובני דודים</div>
-              <NodeRow>{renderPeople(fatherSiblings, "דוד/ה")}</NodeRow>
-              <div className="border-t border-white/10 pt-3"><NodeRow>{renderPeople(cousinsBySide.father, "בן/בת דוד")}</NodeRow></div>
+          <div className="tree-connector"/>
+          <section className="space-y-4 rounded-[24px] border border-[#ff4b91]/30 bg-[#28121e]/75 p-4 sm:p-6">
+            <SectionTitle>האדם המרכזי · אחים ואחיות</SectionTitle>
+            <div className="flex flex-wrap items-start justify-center gap-4">
+              {renderGroup([...family.siblingIds, centralId], "אח/ות", "אין רשומות נוספות", { central: true })}
             </div>
-            <div className="tree-side-branch space-y-3 rounded-2xl border border-fuchsia-300/10 bg-fuchsia-300/[0.025] p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-fuchsia-200"><UsersRound size={14} /> דודים מצד האם ובני דודים</div>
-              <NodeRow>{renderPeople(motherSiblings, "דוד/ה")}</NodeRow>
-              <div className="border-t border-white/10 pt-3"><NodeRow>{renderPeople(cousinsBySide.mother, "בן/בת דוד")}</NodeRow></div>
-            </div>
+          </section>
+
+          <div className="grid grid-cols-3 gap-5">
+            <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <SectionTitle>בני ובנות דודים · צד האב</SectionTitle>{renderGroup(family.paternalCousins, "בן/בת דוד", "לא נמצאו רשומות מתועדות")}
+            </section>
+            <section className="space-y-4 rounded-[22px] border border-[#ff4b91]/20 bg-[#ff4b91]/[0.025] p-4">
+              <SectionTitle>ילדים</SectionTitle>{renderGroup(family.childIds, "ילד/ה", "לא נמצאה רשומת ילד")}
+              {family.coParentIds.length > 0 && <div className="border-t border-white/10 pt-4"><p className="mb-3 text-center text-[10px] text-white/40">הורה נוסף/ת לילדים</p>{renderGroup(family.coParentIds, "הורה נוסף/ת", "")}</div>}
+            </section>
+            <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
+              <SectionTitle>בני ובנות דודים · צד האם</SectionTitle>{renderGroup(family.maternalCousins, "בן/בת דוד", "לא נמצאו רשומות מתועדות")}
+            </section>
           </div>
         </div>
       </div>

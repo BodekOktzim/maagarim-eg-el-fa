@@ -13,4 +13,4 @@ rm -rf __manus__
 touch .nojekyll
 
 echo "GitHub Pages site built at the repository root: $ROOT"
-echo "The static UI uses public Git LFS Range requests for ID search; source data is not copied into Pages assets."
+echo "The static UI uses public Git LFS Range requests and compact sidecar indexes for ID, phone, text, Facebook ID, and family search; source rows remain unchanged."
