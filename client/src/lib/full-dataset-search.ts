@@ -13,7 +13,9 @@ export type SearchHit = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phoneYear?: string;
   address?: string;
+  addressYear?: string;
   city?: string;
   cityCode?: string;
   age?: string;
@@ -320,6 +322,45 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
   };
 }
 
+export function mergeHits(hits: SearchHit[]): SearchHit[] {
+  const groups = new Map<string, SearchHit[]>();
+  for (const hit of hits) {
+    const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
+    const group = groups.get(key) ?? [];
+    group.push(hit);
+    groups.set(key, group);
+  }
+  return Array.from(groups.values()).map((group) => {
+    const elector = group.find((hit) => hit.sourceKey === "elector");
+    const agron = group.find((hit) => hit.sourceKey === "agron2006");
+    const facebook = group.find((hit) => hit.sourceKey === "facebook");
+    const newestFirst = [elector, agron, facebook, ...group].filter((hit, index, values): hit is SearchHit => Boolean(hit) && values.indexOf(hit) === index);
+    const pick = <K extends keyof SearchHit>(field: K) => newestFirst.find((hit) => hit[field] !== undefined && hit[field] !== "")?.[field];
+    const family = agron ?? elector ?? facebook ?? group[0];
+    return {
+      ...family,
+      source: "מאגר מאוחד",
+      sourceKey: family.sourceKey,
+      confidence: family.confidence,
+      nationalId: pick("nationalId") ?? family.nationalId,
+      firstName: pick("firstName") ?? family.firstName,
+      lastName: pick("lastName") ?? family.lastName,
+      fullName: [pick("firstName") ?? family.firstName, pick("lastName") ?? family.lastName].filter(Boolean).join(" ") || family.fullName,
+      phone: pick("phone"),
+      phoneYear: elector?.phone ? "2020" : agron?.phone ? "2006" : undefined,
+      address: pick("address"),
+      addressYear: elector?.address ? "2020" : agron?.address ? "2006" : undefined,
+      city: pick("city"),
+      age: pick("age"),
+      birthDate: pick("birthDate"),
+      facebookId: pick("facebookId"),
+      fatherId: agron?.fatherId ?? family.fatherId,
+      motherId: agron?.motherId ?? family.motherId,
+      spouseId: agron?.spouseId ?? family.spouseId,
+    };
+  });
+}
+
 async function fetchSourceRow(source: IndexSource, record: RowPointer, target: string) {
   const cacheKey = `${source.key}:${record.offset}:${record.length}`;
   if (!rowCache.has(cacheKey)) {
@@ -368,7 +409,7 @@ export async function searchFullDatasetsById(input: string): Promise<SearchHit[]
         const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, normalized)));
         return hits.filter((hit): hit is SearchHit => Boolean(hit));
       }));
-      return results.flat();
+      return mergeHits(results.flat());
     })());
   }
   return idSearchCache.get(normalized)!;
@@ -458,7 +499,7 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
   const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions)));
-  return hits.flat().slice(0, 250);
+  return mergeHits(hits.flat()).slice(0, 250);
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {
@@ -478,7 +519,7 @@ export async function searchFullDatasetsByPhone(input: string) {
     const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
     return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone))).map((hit) => ({ ...hit, confidence: "phone-match" as const }));
   }));
-  return all.flat();
+  return mergeHits(all.flat());
 }
 
 export async function searchFullDatasetsByFacebookId(input: string) {
