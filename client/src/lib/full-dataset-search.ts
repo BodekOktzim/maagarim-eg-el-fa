@@ -284,6 +284,20 @@ function displayId(value?: string) {
   return digits.length >= 5 && digits.length <= 9 ? digits.padStart(9, "0") : undefined;
 }
 
+export function currentAgeFromBirthDate(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (!match) return undefined;
+  const birthYear = Number(match[1]);
+  const birthMonth = Number(match[2]);
+  const birthDay = Number(match[3]);
+  const today = new Date();
+  let age = today.getFullYear() - birthYear;
+  const birthdayPassed = today.getMonth() + 1 > birthMonth || (today.getMonth() + 1 === birthMonth && today.getDate() >= birthDay);
+  if (!birthdayPassed) age -= 1;
+  return age >= 0 && age <= 130 ? String(age) : undefined;
+}
+
 function parseHit(source: IndexSource, line: string, target = "") : SearchHit | null {
   let fields: string[];
   if (source.key === "agron2006") fields = parseDelimitedRow(line, "\t", "\u0000");
@@ -300,7 +314,7 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
     return {
       source: "AGRON 2006", sourceKey: source.key, confidence: "exact-id", nationalId: displayId(fields[0]) ?? target,
       firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "ללא שם בקובץ",
-      phone: fields[13] || undefined, address: address || undefined, city: fields[11] || undefined, age: fields[14] || undefined, birthDate: fields[15] || undefined,
+      phone: fields[13] || undefined, address: address || undefined, city: fields[11] || undefined, age: (currentAgeFromBirthDate(fields[15]) ?? fields[14]) || undefined, birthDate: fields[15] || undefined,
       fatherId: displayId(fields[20]), motherId: displayId(fields[22]), spouseId: displayId(fields[23]),
     };
   }

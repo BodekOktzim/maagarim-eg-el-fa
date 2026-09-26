@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeHits, type SearchHit } from "./full-dataset-search";
+import { currentAgeFromBirthDate, mergeHits, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -11,6 +11,15 @@ const hit = (overrides: Partial<SearchHit>): SearchHit => ({
 });
 
 describe("unified AGRON/Elector result merging", () => {
+  it("calculates age against today's date rather than a stale source age", () => {
+    const today = new Date();
+    const beforeBirthday = new Date(today.getFullYear() - 30, today.getMonth(), today.getDate() + 1);
+    const afterBirthday = new Date(today.getFullYear() - 30, today.getMonth(), Math.max(1, today.getDate() - 1));
+    const format = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+    expect(currentAgeFromBirthDate(format(beforeBirthday))).toBe("29");
+    expect(currentAgeFromBirthDate(format(afterBirthday))).toBe("30");
+  });
+
   it("returns one record and prefers Elector address and phone", () => {
     const [merged] = mergeHits([
       hit({ source: "AGRON 2006", address: "כתובת ישנה", phone: "0501111111", fatherId: "000000001" }),
