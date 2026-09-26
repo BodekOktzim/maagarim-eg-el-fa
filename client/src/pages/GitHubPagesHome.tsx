@@ -1,9 +1,9 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { AlertTriangle, Database, KeyRound, LoaderCircle, LockKeyhole, LogOut, Network, Search, ShieldCheck } from "lucide-react";
+import { KeyRound, LoaderCircle, LockKeyhole, LogOut, Network, Search } from "lucide-react";
 import { searchFullDatasetsById, type SearchHit } from "@/lib/full-dataset-search";
 
-const PASSWORD_HASH = "56620280b6ccf2a4f564b161acdd8f74340cadba940ec6067a6f057357108a8b";
-const SESSION_KEY = "maagarim-pages-unlocked-v1";
+const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
+const SESSION_KEY = "maagarim-pages-unlocked-v2";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 
 async function sha256(value: string) {
@@ -88,18 +88,13 @@ export default function GitHubPagesHome() {
       <main className="w-full max-w-xl space-y-5">
         <div className="rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-fuchsia-300/15 text-fuchsia-200"><LockKeyhole size={26}/></div>
-          <h1 className="mt-5 text-center text-2xl font-semibold">מפת קשרים משפחתית</h1>
-          <p className="mt-2 text-center text-sm text-white/60">הזן סיסמה כדי לפתוח את מסך החיפוש</p>
+          <h1 className="mt-5 text-center"><span className="bg-gradient-to-r from-fuchsia-200 via-white to-violet-200 bg-clip-text font-serif text-3xl font-bold tracking-[0.12em] text-transparent sm:text-4xl">OSINT Search</span></h1>
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>
-        </div>
-        <div className="rounded-2xl border border-amber-200/25 bg-amber-100/[0.06] p-4 text-sm leading-6 text-amber-50/85">
-          <p className="flex items-center gap-2 font-semibold"><AlertTriangle size={17}/>חשוב: זו נעילת ממשק בלבד</p>
-          <p className="mt-1">האתר והקבצים מאוחסנים במאגר ציבורי. אפשר לעקוף את המסך, והקבצים ניתנים להורדה ישירה מ־GitHub. הסיסמה אינה מספקת אבטחה או פרטיות.</p>
         </div>
       </main>
     </div>;
@@ -108,7 +103,7 @@ export default function GitHubPagesHome() {
   return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-7">
-        <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><div><p className="font-bold tracking-tight">מפת קשרים משפחתית</p><p className="text-xs text-white/45">חיפוש ת״ז במאגרים המלאים</p></div></div>
+        <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
         <button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button>
       </div>
     </header>
@@ -116,8 +111,7 @@ export default function GitHubPagesHome() {
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-7 sm:px-7 sm:py-10">
       <section className="overflow-hidden rounded-[28px] border border-fuchsia-200/10 bg-[#20102b] px-5 py-7 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:px-9 sm:py-10">
         <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="max-w-2xl"><div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/80"><Database size={14}/> מאגרי מקור</div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">חיפוש לפי תעודת זהות</h1><p className="mt-3 text-sm leading-6 text-white/65 sm:text-base">מחפש התאמות ב־AGRON 2006, Elector ובערכים מספריים מתאימים ב־Facebook. כל תוצאה מסומנת בשם המקור.</p></div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><ShieldCheck className="text-fuchsia-200" size={28}/><p className="mt-2 text-xs leading-5 text-white/55">הורדה חלקית לפי אינדקס<br/>לא מורידים את כל המאגרים בכל חיפוש</p></div>
+          <div className="max-w-2xl"><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">חיפוש לפי תעודת זהות</h1></div>
         </div>
 
         <form onSubmit={(event) => { event.preventDefault(); void runSearch(); }} className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -127,8 +121,6 @@ export default function GitHubPagesHome() {
         {searchError && <p role="alert" className="mt-3 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{searchError}</p>}
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/55"><span>מקורות:</span><span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">AGRON 2006 · ת״ז מדויקת</span><span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">Elector · ת״ז מדויקת</span><span className="rounded-full border border-amber-200/15 bg-amber-200/5 px-3 py-1.5">Facebook · התאמה מספרית לבדיקה</span></div>
       </section>
-
-      <section className="rounded-2xl border border-amber-200/20 bg-amber-100/[0.04] p-4 text-sm leading-6 text-amber-50/80"><p className="flex items-center gap-2 font-semibold text-amber-100"><AlertTriangle size={17}/>הסיסמה אינה מגינה על הנתונים</p><p className="mt-1">הסיסמה רק מסתירה את הממשק עד הכניסה. המאגר והקבצים ציבוריים, ומי שמכיר את כתובת GitHub יכול לעקוף את המסך ולהוריד אותם.</p></section>
 
       {isSearching && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">החיפוש מתבצע…</p><p className="mt-1 text-sm text-white/50">נבדקים שלושת אינדקסי המקור ומורדות רק שורות תואמות.</p></div></section>}
 
@@ -141,6 +133,6 @@ export default function GitHubPagesHome() {
         </article>)}</div> : <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהמספר הוקלד נכון.</div>}
       </section>}
     </main>
-    <footer className="border-t border-white/10 px-4 py-5 text-center text-xs text-white/35">Unified Data Intelligence · GitHub Pages · חיפוש לפי ת״ז</footer>
+    <footer className="border-t border-white/10 px-4 py-5 text-center font-serif text-xs tracking-[0.12em] text-white/35">OSINT Search</footer>
   </div>;
 }
