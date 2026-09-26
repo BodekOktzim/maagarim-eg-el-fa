@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-GITHUB_PAGES=true pnpm exec vite build
+BUILD_ID="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" pnpm exec vite build
 
 rm -rf docs assets __manus__
 rm -f index.html .nojekyll

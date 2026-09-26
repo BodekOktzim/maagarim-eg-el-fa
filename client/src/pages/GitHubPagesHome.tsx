@@ -12,8 +12,8 @@ import {
 } from "@/lib/full-dataset-search";
 
 const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
-const SESSION_KEY = "maagarim-pages-unlocked-v2";
-const SESSION_TTL_MS = 30 * 60 * 1000;
+const SESSION_KEY = `maagarim-pages-unlocked-${import.meta.env.VITE_BUILD_ID ?? "dev"}`;
+const AWAY_TTL_MS = 5 * 60 * 1000;
 type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 
@@ -25,7 +25,7 @@ function readSessionStart() {
     return migratedAt;
   }
   const startedAt = raw ? Number(raw) : NaN;
-  if (!Number.isFinite(startedAt) || startedAt <= 0 || Date.now() - startedAt >= SESSION_TTL_MS) {
+  if (!Number.isFinite(startedAt) || startedAt <= 0) {
     sessionStorage.removeItem(SESSION_KEY);
     return null;
   }
@@ -80,9 +80,21 @@ export default function GitHubPagesHome() {
 
   useEffect(() => {
     if (sessionStartedAt === null) return;
-    const remaining = SESSION_TTL_MS - (Date.now() - sessionStartedAt);
-    const timeout = window.setTimeout(lock, Math.max(0, remaining));
-    return () => window.clearTimeout(timeout);
+    let awaySince: number | null = null;
+    const markAway = () => { if (awaySince === null) awaySince = Date.now(); };
+    const checkReturn = () => {
+      if (awaySince !== null && Date.now() - awaySince >= AWAY_TTL_MS) lock();
+      awaySince = null;
+    };
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") markAway(); else checkReturn(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("blur", markAway);
+    window.addEventListener("focus", checkReturn);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("blur", markAway);
+      window.removeEventListener("focus", checkReturn);
+    };
   }, [sessionStartedAt]);
 
   const switchMode = (next: SearchMode) => {
