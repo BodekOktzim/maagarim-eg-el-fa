@@ -1,5 +1,6 @@
 const RECORD_BYTES = 16;
 const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/main";
+const INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/main";
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
@@ -418,7 +419,7 @@ export async function searchFullDatasetsById(input: string): Promise<SearchHit[]
         const endOrdinal = firstGreater < sparseCount ? Number(sparseView.getBigUint64(firstGreater * RECORD_BYTES + 4, true)) : totalRecords;
         if (endOrdinal <= startOrdinal) return [];
         if (endOrdinal - startOrdinal > Math.max(blockRecords * 4, 16_384)) throw new Error(`נמצאו יותר מדי התאמות ב-${source.key}; החיפוש נעצר כדי למנוע הורדה גדולה.`);
-        const buffer = await getByteRange(`${MEDIA_ROOT}/search-index-full/${source.key}.bin`, startOrdinal * RECORD_BYTES, endOrdinal * RECORD_BYTES - 1, source.key);
+        const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${source.key}.bin`, startOrdinal * RECORD_BYTES, endOrdinal * RECORD_BYTES - 1, source.key);
         if (buffer.byteLength % RECORD_BYTES) throw new Error(`טווח אינדקס פגום עבור ${source.key}.`);
         const view = new DataView(buffer);
         const pointers: RowPointer[] = [];
@@ -564,7 +565,7 @@ async function getChildren(parentId: string, extensions: ExtensionManifest) {
   const count = range.endOrdinal - range.startOrdinal;
   if (count <= 0) return [] as string[];
   if (count > 5000) throw new Error("הקשר כולל מספר גדול מדי של רשומות; הוגבלה טעינת העץ.");
-  const buffer = await getByteRange(`${MEDIA_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 20, range.endOrdinal * 20 - 1, meta.indexFile);
+  const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 20, range.endOrdinal * 20 - 1, meta.indexFile);
   const view = new DataView(buffer);
   const ids = new Set<string>();
   for (let byte = 0; byte + 20 <= buffer.byteLength; byte += 20) {
