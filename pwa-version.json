@@ -1,0 +1,37 @@
+{
+  "buildId": "ec9296abfc833637730d4e6a2f41a3142bad4ce9",
+  "version": "ec9296a",
+  "builtAt": "2026-09-27T21:20:04.619Z",
+  "appBytes": 1640985,
+  "downloadBytes": 601052,
+  "resources": [
+    {
+      "url": "/maagarim-eg-el-fa/assets/index-CAAjfi3Y.js",
+      "bytes": 524454
+    },
+    {
+      "url": "/maagarim-eg-el-fa/assets/index-CpUqa7HW.css",
+      "bytes": 144319
+    },
+    {
+      "url": "/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js",
+      "bytes": 429493
+    },
+    {
+      "url": "/maagarim-eg-el-fa/index.html",
+      "bytes": 368491
+    },
+    {
+      "url": "/maagarim-eg-el-fa/manifest.webmanifest",
+      "bytes": 664
+    },
+    {
+      "url": "/maagarim-eg-el-fa/pwa-icon-192.png",
+      "bytes": 21459
+    },
+    {
+      "url": "/maagarim-eg-el-fa/pwa-icon-512.png",
+      "bytes": 152105
+    }
+  ]
+}
