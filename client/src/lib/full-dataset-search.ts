@@ -704,7 +704,7 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria, mat
   const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
-  if (age && (!/^\d{1,3}$/.test(age) || Number(age) < 1 || Number(age) > 120)) throw new Error("יש להזין גיל בין 1 ל־120.");
+  if (age) parseAgeRange(age);
   for (const value of [criteria.firstName, criteria.lastName, criteria.city]) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
   }
