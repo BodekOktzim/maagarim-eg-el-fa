@@ -174,11 +174,12 @@ export default function PwaControls() {
 
     void (async () => {
       try {
-        registrationRef.current = await navigator.serviceWorker.register(versionedWorkerUrl(BUILD_ID), {
+        await checkLatestRelease();
+        const existing = await navigator.serviceWorker.getRegistration(APP_BASE);
+        registrationRef.current = existing ?? await navigator.serviceWorker.register(versionedWorkerUrl(BUILD_ID), {
           scope: APP_BASE,
           updateViaCache: "none",
         });
-        await checkLatestRelease();
       } catch {
         // PWA features are progressive enhancement; the web app works without them.
       }
