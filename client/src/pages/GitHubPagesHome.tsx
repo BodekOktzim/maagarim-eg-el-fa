@@ -3,13 +3,14 @@ import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogO
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { buildSearchResultRows, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
+import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
   searchFamilyTreeById,
   searchFullDatasetsByIdWithDetails,
   searchFullDatasetsByFacebookId,
   searchFullDatasetsByPhone,
   searchFullDatasetsByText,
+  parseAgeRange,
   type FamilyTreeData,
   type SearchHit,
   type TextMatchMode,
@@ -80,6 +81,7 @@ export default function GitHubPagesHome() {
   const [searchError, setSearchError] = useState("");
   const [exportFormat, setExportFormat] = useState<SearchExportFormat>("csv");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportingFamilyId, setExportingFamilyId] = useState<string | null>(null);
   const [exportError, setExportError] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [familyData, setFamilyData] = useState<FamilyTreeData | null>(null);
@@ -110,6 +112,29 @@ export default function GitHubPagesHome() {
       setExportError("הייצוא נכשל. נסה פורמט אחר או נסה שוב.");
     } finally {
       setIsExporting(false);
+    }
+  };
+  const exportPersonWithFamily = async (hit: SearchHit) => {
+    const centralId = normalizeId(hit.nationalId);
+    if (centralId.length < 5 || centralId.length > 9 || exportingFamilyId) return;
+    setExportingFamilyId(centralId);
+    setExportError("");
+    try {
+      const family = await searchFamilyTreeById(centralId);
+      const person = { id: centralId, fullName: hit.fullName, nationalId: hit.nationalId, phone: hit.phone, address: hit.address, city: hit.city, birthDate: hit.birthDate, sourceNames: hit.sourceNames ?? [hit.source] };
+      const csv = buildSearchResultsCsv([person], family.people, family.relationships, centralId);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `osint-person-family_${centralId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "הורדת האדם ועץ המשפחה נכשלה.");
+    } finally {
+      setExportingFamilyId(null);
     }
   };
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
@@ -184,6 +209,7 @@ export default function GitHubPagesHome() {
       } else {
         const searchCriteria = Object.fromEntries(Object.entries(criteria).map(([key, value]) => [key, value.trim()])) as typeof criteria;
         if (!Object.values(searchCriteria).some(Boolean)) throw new Error("יש למלא לפחות שדה אחד: שם פרטי, שם משפחה, יישוב או גיל.");
+        if (searchCriteria.age) parseAgeRange(searchCriteria.age);
         setLastQuery([...([searchCriteria.firstName, searchCriteria.lastName, searchCriteria.city, searchCriteria.age && `גיל ${searchCriteria.age}`].filter(Boolean)), textMatchMode === "exact" ? "מדויק" : "דומה"].join(" · "));
         setResults(await searchFullDatasetsByText(searchCriteria, textMatchMode));
       }
@@ -304,7 +330,7 @@ export default function GitHubPagesHome() {
               <input autoComplete="off" value={criteria.firstName} onChange={(event) => setCriteria((prev) => ({ ...prev, firstName: event.target.value }))} placeholder="שם פרטי" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
               <input autoComplete="off" value={criteria.lastName} onChange={(event) => setCriteria((prev) => ({ ...prev, lastName: event.target.value }))} placeholder="שם משפחה" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
               <input autoComplete="off" value={criteria.city} onChange={(event) => setCriteria((prev) => ({ ...prev, city: event.target.value }))} placeholder="יישוב" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-              <input type="number" min="1" max="120" inputMode="numeric" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
+              <input type="text" inputMode="numeric" autoComplete="off" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל או טווח, למשל 20-30" aria-label="גיל או טווח גילאים" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
               <button type="submit" disabled={isSearching} className="h-12 rounded-xl bg-[#f2a9d2] px-6 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-2 lg:col-span-4">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חיפוש לפי פרטים</>}</button>
             </div>
           </>}
@@ -321,7 +347,7 @@ export default function GitHubPagesHome() {
           <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
           {(hit.fatherId || hit.motherId || hit.spouseId) && <div className="mt-4 border-t border-white/10 pt-3"><p className="mb-2 text-xs text-white/45">מזהים קשורים הרשומים במקור:</p><div className="flex flex-wrap gap-2">{hit.fatherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אב · {hit.fatherId}</span>}{hit.motherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אם · {hit.motherId}</span>}{hit.spouseId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">בן/בת זוג · {hit.spouseId}</span>}</div></div>}
-          {hit.nationalId && <button type="button" onClick={() => void openFamily(hit)} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button>}
+          {hit.nationalId && <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void openFamily(hit)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button><button type="button" onClick={() => void exportPersonWithFamily(hit)} disabled={Boolean(exportingFamilyId)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60">{exportingFamilyId === normalizeId(hit.nationalId) ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}הורד אדם + עץ משפחה</button></div>}
         </article>)}</div> : !searchError ? <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהפרטים הוקלדו נכון ונסה שוב.</div> : null}
       </section>}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SearchHit } from "@/lib/full-dataset-search";
-import { buildSearchResultRows, createSearchExportBlob, SEARCH_EXPORT_FORMATS } from "@/lib/search-export";
+import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS } from "@/lib/search-export";
 
 const sampleHit: SearchHit = {
   source: "AGRON 2006",
@@ -58,5 +58,17 @@ describe("search result exports", () => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     expect(blob.type).toContain("spreadsheetml.sheet");
     expect(Array.from(bytes.slice(0, 2))).toEqual([0x50, 0x4b]);
+  });
+
+  it("includes family people and relationships in the person export", () => {
+    const csv = buildSearchResultsCsv(
+      [{ id: sampleHit.nationalId, fullName: sampleHit.fullName, nationalId: sampleHit.nationalId }],
+      [{ id: "987654321", fullName: "הורה ישראלי", nationalId: "987654321" }],
+      [{ personAId: sampleHit.nationalId, personBId: "987654321", type: "PARENT", source: "AGRON" }],
+      sampleHit.nationalId,
+    );
+    expect(csv).toContain("הורה ישראלי");
+    expect(csv).toContain("קשר משפחתי");
+    expect(csv).toContain("הורה של האדם המרכזי");
   });
 });

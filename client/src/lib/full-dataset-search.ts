@@ -42,6 +42,19 @@ export type TextSearchCriteria = {
   age?: string;
 };
 
+export function parseAgeRange(value?: string) {
+  const text = value?.trim();
+  if (!text) return undefined;
+  const match = text.match(/^(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?$/);
+  if (!match) throw new Error("הגיל צריך להיות מספר או טווח, לדוגמה 20 או 20-30.");
+  const first = Number(match[1]);
+  const second = match[2] ? Number(match[2]) : first;
+  if (!Number.isInteger(first) || !Number.isInteger(second) || first < 1 || second > 120 || first > second) {
+    throw new Error("יש להזין גיל בין 1 ל־120, או טווח תקין כמו 20-30.");
+  }
+  return { min: first, max: second };
+}
+
 export type TextMatchMode = "exact" | "similar";
 
 export type FamilyTreePerson = {
@@ -575,7 +588,11 @@ function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: Te
     const term = criteria[field]?.trim();
     if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
   }
-  if (criteria.age && String(Number(hit.age)) !== String(Number(criteria.age))) return false;
+  const ageRange = parseAgeRange(criteria.age);
+  if (ageRange) {
+    const age = Number(hit.age);
+    if (!Number.isInteger(age) || age < ageRange.min || age > ageRange.max) return false;
+  }
   return true;
 }
 
@@ -626,6 +643,7 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
 
 async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
+  const ageRange = parseAgeRange(criteria.age);
   const criteriaItems = criteriaForSource(criteria, source.key);
   const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof SearchHit; count: number }[] = [];
   for (const criterion of criteriaItems) {
@@ -640,13 +658,14 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
       if (count) candidates.push({ meta, key, value: criterion.value, field: criterion.field, count });
     }
   }
-  if (criteria.age && source.key === "agron2006") {
+  if (ageRange && source.key === "agron2006") {
     const meta = extensions.indexes["age-agron"];
-    const key = Number(criteria.age);
-    if (meta && Number.isInteger(key)) {
-      const range = await findSparseRange(meta, key, 4, 16);
-      const count = Math.max(0, range.endOrdinal - range.startOrdinal);
-      if (count) candidates.push({ meta, key, value: criteria.age, field: "age", count });
+    if (meta) {
+      for (let key = ageRange.min; key <= ageRange.max; key += 1) {
+        const range = await findSparseRange(meta, key, 4, 16);
+        const count = Math.max(0, range.endOrdinal - range.startOrdinal);
+        if (count) candidates.push({ meta, key, value: String(key), field: "age", count });
+      }
     }
   }
   if (!candidates.length) return [] as SearchHit[];
@@ -654,8 +673,13 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     ? (["firstName", "lastName", "city", "age"] as const).flatMap((field) => candidates
       .filter((candidate) => candidate.field === field)
       .sort((left, right) => left.count - right.count)
-      .slice(0, field === "age" ? 1 : 4))
-    : [candidates.reduce((best, candidate) => candidate.count < best.count ? candidate : best)];
+      .slice(0, field === "age" ? 120 : 4))
+    : (() => {
+      const ageCandidates = candidates.filter((candidate) => candidate.field === "age");
+      const otherCandidates = candidates.filter((candidate) => candidate.field !== "age");
+      const bestOther = otherCandidates.length ? [otherCandidates.reduce((best, candidate) => candidate.count < best.count ? candidate : best)] : [];
+      return [...bestOther, ...ageCandidates];
+    })();
   const pointerScores = new Map<number, { pointer: RowPointer; score: number; order: number }>();
   const postingGroups = await Promise.all(selectedCandidates.map((candidate) =>
     readPostingGroup(candidate.meta, candidate.key, matchMode === "similar" ? 10_000 : 300_000, true)));

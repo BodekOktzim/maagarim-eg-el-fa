@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseFacebookHit, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
+import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -11,6 +11,14 @@ const hit = (overrides: Partial<SearchHit>): SearchHit => ({
 });
 
 describe("unified AGRON/Elector result merging", () => {
+  it("accepts a single age or an inclusive age range", () => {
+    expect(parseAgeRange("20")).toEqual({ min: 20, max: 20 });
+    expect(parseAgeRange("20-30")).toEqual({ min: 20, max: 30 });
+    expect(parseAgeRange("20 – 30")).toEqual({ min: 20, max: 30 });
+    expect(() => parseAgeRange("30-20")).toThrow();
+    expect(() => parseAgeRange("abc")).toThrow();
+  });
+
   it("calculates age against today's date rather than a stale source age", () => {
     const today = new Date();
     const beforeBirthday = new Date(today.getFullYear() - 30, today.getMonth(), today.getDate() + 1);
@@ -120,6 +128,12 @@ describe("unified AGRON/Elector result merging", () => {
     const cityRecord = hit({ city: "מטולה" });
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" })).toBe(false);
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" }, "similar")).toBe(true);
+  });
+
+  it("matches inclusive age ranges", () => {
+    expect(textMatchesWithinSource(hit({ age: "20" }), { age: "20-30" })).toBe(true);
+    expect(textMatchesWithinSource(hit({ age: "30" }), { age: "20-30" })).toBe(true);
+    expect(textMatchesWithinSource(hit({ age: "31" }), { age: "20-30" })).toBe(false);
   });
 
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {

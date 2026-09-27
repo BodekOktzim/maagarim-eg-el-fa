@@ -162,7 +162,7 @@ export function buildSearchResultsCsv(
     ]);
   }
 
-  const peopleById = new Map(familyPeople.map((person) => [person.id, person]));
+  const peopleById = new Map([...searchResults, ...familyPeople].map((person) => [person.id, person]));
   for (const relationship of relationships) {
     const personA = peopleById.get(relationship.personAId);
     const personB = peopleById.get(relationship.personBId);
