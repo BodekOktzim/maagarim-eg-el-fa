@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentAgeFromBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, textMatchesWithinSource, type SearchHit } from "./full-dataset-search";
+import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseFacebookHit, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -18,6 +18,9 @@ describe("unified AGRON/Elector result merging", () => {
     const format = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
     expect(currentAgeFromBirthDate(format(beforeBirthday))).toBe("29");
     expect(currentAgeFromBirthDate(format(afterBirthday))).toBe("30");
+    expect(formatBirthDate("1981-02-26")).toBe("26/02/1981");
+    expect(formatBirthDate("26/02/1981")).toBe("26/02/1981");
+    expect(currentAgeFromBirthDate("26/02/1981")).toBe(currentAgeFromBirthDate("1981-02-26"));
   });
 
   it("returns one record and prefers Elector address and phone", () => {
@@ -30,9 +33,54 @@ describe("unified AGRON/Elector result merging", () => {
       fullName: "ישראל ישראלי",
       address: "כתובת עדכנית",
       addressYear: "2020",
+      previousAddress: "כתובת ישנה",
+      previousAddressYear: "2006",
       phone: "0502222222",
       phoneYear: "2020",
       fatherId: "000000001",
+    });
+  });
+
+  it("maps Facebook marital status without treating its profile ID as a national ID", () => {
+    const fields = Array.from({ length: 12 }, () => "");
+    fields[0] = "0501234567";
+    fields[1] = "1402470716";
+    fields[2] = "David";
+    fields[3] = "Cohen";
+    fields[4] = "male";
+    fields[7] = "Married";
+    expect(parseFacebookHit(fields.join(":"))).toMatchObject({
+      nationalId: "",
+      facebookId: "1402470716",
+      phone: "0501234567",
+      maritalStatus: "נשוי",
+    });
+  });
+
+  it("attaches Facebook marital status only when normalized phone and both names match", () => {
+    const elector = hit({ source: "Elector", sourceKey: "elector", firstName: "דוד", lastName: "כהן", phone: "08-7654321", phoneCandidates: ["08-7654321", "08-1234567"] });
+    const facebook = hit({ source: "Facebook", sourceKey: "facebook", firstName: "דוד", lastName: "כהן", phone: "08-1234567", maritalStatus: "נשוי" });
+    const unrelated = { ...facebook, firstName: "משה" };
+
+    expect(applyFacebookDetails([elector], [facebook])[0].maritalStatus).toBe("נשוי");
+    expect(applyFacebookDetails([elector], [unrelated])[0].maritalStatus).toBeUndefined();
+  });
+
+  it("shows the same merged details when a person is selected in the family tree", () => {
+    const person = toFamilyTreePerson("012345678", [
+      hit({ source: "AGRON 2006", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", phone: "08-1234567", address: "רחוב ישן 10", addressYear: "2006", birthDate: "26/02/1981", maritalStatus: "נשוי" }),
+      hit({ source: "Elector", sourceKey: "elector", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", phone: "08-7654321", address: "רחוב חדש 13", addressYear: "2020" }),
+    ]);
+    expect(person).toMatchObject({
+      nationalId: "012345678",
+      phone: "08-7654321",
+      phoneYear: "2020",
+      address: "רחוב חדש 13",
+      addressYear: "2020",
+      previousAddress: "רחוב ישן 10",
+      previousAddressYear: "2006",
+      birthDate: "26/02/1981",
+      maritalStatus: "נשוי",
     });
   });
 

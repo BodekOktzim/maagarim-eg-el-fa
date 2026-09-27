@@ -16,16 +16,21 @@ export type SearchHit = {
   lastName?: string;
   phone?: string;
   phoneYear?: string;
+  phoneCandidates?: string[];
   address?: string;
   addressYear?: string;
+  previousAddress?: string;
+  previousAddressYear?: string;
   city?: string;
   cityCode?: string;
   age?: string;
   birthDate?: string;
+  maritalStatus?: string;
   fatherId?: string;
   motherId?: string;
   spouseId?: string;
   facebookId?: string;
+  sourceNames?: string[];
 };
 
 export type TextSearchCriteria = {
@@ -42,10 +47,15 @@ export type FamilyTreePerson = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phoneYear?: string;
   address?: string;
+  addressYear?: string;
+  previousAddress?: string;
+  previousAddressYear?: string;
   city?: string;
   birthDate?: string;
   age?: string;
+  maritalStatus?: string;
   sourceNames?: string[];
 };
 
@@ -108,6 +118,8 @@ let idManifestPromise: Promise<IdManifest> | undefined;
 let extensionManifestPromise: Promise<ExtensionManifest> | undefined;
 const sparseCache = new Map<string, Promise<ArrayBuffer>>();
 const idSearchCache = new Map<string, Promise<SearchHit[]>>();
+const idSourceSearchCache = new Map<string, Promise<SearchHit[]>>();
+const facebookPhoneCache = new Map<string, Promise<SearchHit[]>>();
 const rowCache = new Map<string, Promise<SearchHit | null>>();
 
 function digitsOnly(value: string) {
@@ -292,16 +304,58 @@ function displayId(value?: string) {
 
 export function currentAgeFromBirthDate(value?: string) {
   if (!value) return undefined;
-  const match = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  if (!match) return undefined;
-  const birthYear = Number(match[1]);
-  const birthMonth = Number(match[2]);
-  const birthDay = Number(match[3]);
+  const iso = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  const dmy = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (!iso && !dmy) return undefined;
+  const birthYear = Number(iso ? iso[1] : dmy![3]);
+  const birthMonth = Number(iso ? iso[2] : dmy![2]);
+  const birthDay = Number(iso ? iso[3] : dmy![1]);
   const today = new Date();
   let age = today.getFullYear() - birthYear;
   const birthdayPassed = today.getMonth() + 1 > birthMonth || (today.getMonth() + 1 === birthMonth && today.getDate() >= birthDay);
   if (!birthdayPassed) age -= 1;
   return age >= 0 && age <= 130 ? String(age) : undefined;
+}
+
+export function formatBirthDate(value?: string) {
+  if (!value) return undefined;
+  const iso = value.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (iso) return `${iso[3].padStart(2, "0")}/${iso[2].padStart(2, "0")}/${iso[1]}`;
+  const dmy = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (dmy) return `${dmy[1].padStart(2, "0")}/${dmy[2].padStart(2, "0")}/${dmy[3]}`;
+  return value;
+}
+
+function normalizeFacebookStatus(value: string | undefined, gender: string | undefined) {
+  const status = value?.trim();
+  if (!status) return undefined;
+  const key = status.toLowerCase().replace(/\s+/g, " ");
+  const female = /^(female|f)$/i.test(gender?.trim() ?? "");
+  const translations: Record<string, [string, string]> = {
+    single: ["רווק", "רווקה"],
+    married: ["נשוי", "נשואה"],
+    divorced: ["גרוש", "גרושה"],
+    widowed: ["אלמן", "אלמנה"],
+    engaged: ["מאורס", "מאורסת"],
+    "in a relationship": ["בזוגיות", "בזוגיות"],
+    "it's complicated": ["המצב מורכב", "המצב מורכב"],
+    "in an open relationship": ["בזוגיות פתוחה", "בזוגיות פתוחה"],
+  };
+  const translated = translations[key];
+  return translated ? translated[female ? 1 : 0] : status;
+}
+
+export function parseFacebookHit(line: string, target = ""): SearchHit | null {
+  const fields = line.replace(/[\r\n]+$/, "").split(":");
+  if (fields.length < 5) return null;
+  const firstName = fields[2] ?? "";
+  const lastName = fields[3] ?? "";
+  return {
+    source: "Facebook (התאמה אפשרית)", sourceKey: "facebook", confidence: "candidate-id-field", nationalId: target,
+    firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "רשומת Facebook",
+    phone: fields[0] || undefined, facebookId: fields[1] || undefined,
+    maritalStatus: normalizeFacebookStatus(fields[7], fields[4]),
+  };
 }
 
 function parseHit(source: IndexSource, line: string, target = "") : SearchHit | null {
@@ -320,7 +374,7 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
     return {
       source: "AGRON 2006", sourceKey: source.key, confidence: "exact-id", nationalId: displayId(fields[0]) ?? target,
       firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "ללא שם בקובץ",
-      phone: fields[13] || undefined, address: address || undefined, city: fields[11] || undefined, age: (currentAgeFromBirthDate(fields[15]) ?? fields[14]) || undefined, birthDate: fields[15] || undefined,
+      phone: fields[13] || undefined, address: address || undefined, city: fields[11] || undefined, age: (currentAgeFromBirthDate(fields[15]) ?? fields[14]) || undefined, birthDate: formatBirthDate(fields[15]),
       fatherId: displayId(fields[20]), motherId: displayId(fields[22]), spouseId: displayId(fields[23]),
     };
   }
@@ -333,13 +387,7 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
       phone: fields[4] || undefined, address: fields[5] || undefined, cityCode: fields[9] || undefined,
     };
   }
-  const firstName = fields[2] ?? "";
-  const lastName = fields[3] ?? "";
-  return {
-    source: "Facebook (התאמה מועמדת)", sourceKey: source.key, confidence: "candidate-id-field", nationalId: displayId(fields[1]) ?? target,
-    firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "רשומת מקור — שדות לא ממופים",
-    phone: fields[0] || undefined, facebookId: fields[1] || undefined,
-  };
+  return parseFacebookHit(line, target);
 }
 
 export function mergeHits(hits: SearchHit[]): SearchHit[] {
@@ -363,16 +411,21 @@ export function mergeHits(hits: SearchHit[]): SearchHit[] {
       sourceKey: family.sourceKey,
       confidence: family.confidence,
       nationalId: pick("nationalId") ?? family.nationalId,
+      sourceNames: Array.from(new Set(group.flatMap((hit) => hit.sourceNames ?? [hit.source]))),
       firstName: pick("firstName") ?? family.firstName,
       lastName: pick("lastName") ?? family.lastName,
       fullName: [pick("firstName") ?? family.firstName, pick("lastName") ?? family.lastName].filter(Boolean).join(" ") || family.fullName,
       phone: pick("phone"),
-      phoneYear: elector?.phone ? "2020" : agron?.phone ? "2006" : undefined,
+      phoneYear: pick("phoneYear") ?? (elector?.phone ? "2020" : agron?.phone ? "2006" : undefined),
+      phoneCandidates: Array.from(new Set(group.flatMap((hit) => hit.phoneCandidates ?? (hit.phone ? [hit.phone] : [])))),
       address: pick("address"),
-      addressYear: elector?.address ? "2020" : agron?.address ? "2006" : undefined,
+      addressYear: pick("addressYear") ?? (elector?.address ? "2020" : agron?.address ? "2006" : undefined),
+      previousAddress: pick("previousAddress") ?? (elector?.address && agron?.address ? agron.address : undefined),
+      previousAddressYear: pick("previousAddressYear") ?? (elector?.address && agron?.address ? "2006" : undefined),
       city: pick("city"),
       age: pick("age"),
       birthDate: pick("birthDate"),
+      maritalStatus: pick("maritalStatus"),
       facebookId: pick("facebookId"),
       fatherId: agron?.fatherId ?? family.fatherId,
       motherId: agron?.motherId ?? family.motherId,
@@ -385,7 +438,7 @@ export function mergePhoneHits(hits: SearchHit[]): SearchHit[] {
   const primary = mergeHits(hits.filter((hit) => hit.sourceKey !== "facebook"));
   const facebook = hits.filter((hit) => hit.sourceKey === "facebook");
   const uniqueFacebook = Array.from(new Map(facebook.map((hit) => [`${hit.facebookId ?? ""}:${hit.nationalId}:${hit.fullName}`, hit])).values());
-  return [...primary, ...uniqueFacebook];
+  return applyFacebookDetails([...primary, ...uniqueFacebook], facebook);
 }
 
 async function fetchSourceRow(source: IndexSource, record: RowPointer, target: string) {
@@ -397,49 +450,63 @@ async function fetchSourceRow(source: IndexSource, record: RowPointer, target: s
   return rowCache.get(cacheKey)!;
 }
 
+async function searchSourceById(source: IndexSource, normalized: string, blockRecords: number): Promise<SearchHit[]> {
+  const cacheKey = `${source.key}:${normalized}`;
+  if (!idSourceSearchCache.has(cacheKey)) {
+    idSourceSearchCache.set(cacheKey, (async () => {
+      const targetId = Number(normalized);
+      const sparseBuffer = await getSparse(`${source.key}.sparse.bin`);
+      if (sparseBuffer.byteLength % RECORD_BYTES) throw new Error(`אינדקס דליל פגום עבור ${source.key}.`);
+      const sparseView = new DataView(sparseBuffer);
+      const sparseCount = sparseBuffer.byteLength / RECORD_BYTES;
+      let low = 0;
+      let high = sparseCount;
+      while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (sparseView.getUint32(mid * RECORD_BYTES, true) < targetId) low = mid + 1;
+        else high = mid;
+      }
+      const firstAtOrAfter = low;
+      const startOrdinal = firstAtOrAfter === 0 ? 0 : Number(sparseView.getBigUint64((firstAtOrAfter - 1) * RECORD_BYTES + 4, true));
+      let firstGreater = firstAtOrAfter;
+      while (firstGreater < sparseCount && sparseView.getUint32(firstGreater * RECORD_BYTES, true) <= targetId) firstGreater += 1;
+      const totalRecords = source.indexBytes / RECORD_BYTES;
+      const endOrdinal = firstGreater < sparseCount ? Number(sparseView.getBigUint64(firstGreater * RECORD_BYTES + 4, true)) : totalRecords;
+      if (endOrdinal <= startOrdinal) return [];
+      if (endOrdinal - startOrdinal > Math.max(blockRecords * 4, 16_384)) throw new Error(`נמצאו יותר מדי התאמות ב-${source.key}; החיפוש נעצר כדי למנוע הורדה גדולה.`);
+      const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${source.key}.bin`, startOrdinal * RECORD_BYTES, endOrdinal * RECORD_BYTES - 1, source.key);
+      if (buffer.byteLength % RECORD_BYTES) throw new Error(`טווח אינדקס פגום עבור ${source.key}.`);
+      const view = new DataView(buffer);
+      const pointers: RowPointer[] = [];
+      for (let byte = 0; byte < buffer.byteLength; byte += RECORD_BYTES) {
+        if (view.getUint32(byte, true) !== targetId) continue;
+        pointers.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+        if (pointers.length >= 40) break;
+      }
+      const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, normalized)));
+      return hits.filter((hit): hit is SearchHit => Boolean(hit));
+    })());
+  }
+  return idSourceSearchCache.get(cacheKey)!;
+}
+
 export async function searchFullDatasetsById(input: string): Promise<SearchHit[]> {
   const normalized = normalizeId(input);
   if (!idSearchCache.has(normalized)) {
     idSearchCache.set(normalized, (async () => {
-      const targetId = Number(normalized);
       const manifest = await getManifest();
       const blockRecords = manifest.blockRecords || 4096;
-      const results = await Promise.all(manifest.sources.map(async (source) => {
-        const sparseBuffer = await getSparse(`${source.key}.sparse.bin`);
-        if (sparseBuffer.byteLength % RECORD_BYTES) throw new Error(`אינדקס דליל פגום עבור ${source.key}.`);
-        const sparseView = new DataView(sparseBuffer);
-        const sparseCount = sparseBuffer.byteLength / RECORD_BYTES;
-        let low = 0;
-        let high = sparseCount;
-        while (low < high) {
-          const mid = (low + high) >>> 1;
-          if (sparseView.getUint32(mid * RECORD_BYTES, true) < targetId) low = mid + 1;
-          else high = mid;
-        }
-        const firstAtOrAfter = low;
-        const startOrdinal = firstAtOrAfter === 0 ? 0 : Number(sparseView.getBigUint64((firstAtOrAfter - 1) * RECORD_BYTES + 4, true));
-        let firstGreater = firstAtOrAfter;
-        while (firstGreater < sparseCount && sparseView.getUint32(firstGreater * RECORD_BYTES, true) <= targetId) firstGreater += 1;
-        const totalRecords = source.indexBytes / RECORD_BYTES;
-        const endOrdinal = firstGreater < sparseCount ? Number(sparseView.getBigUint64(firstGreater * RECORD_BYTES + 4, true)) : totalRecords;
-        if (endOrdinal <= startOrdinal) return [];
-        if (endOrdinal - startOrdinal > Math.max(blockRecords * 4, 16_384)) throw new Error(`נמצאו יותר מדי התאמות ב-${source.key}; החיפוש נעצר כדי למנוע הורדה גדולה.`);
-        const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${source.key}.bin`, startOrdinal * RECORD_BYTES, endOrdinal * RECORD_BYTES - 1, source.key);
-        if (buffer.byteLength % RECORD_BYTES) throw new Error(`טווח אינדקס פגום עבור ${source.key}.`);
-        const view = new DataView(buffer);
-        const pointers: RowPointer[] = [];
-        for (let byte = 0; byte < buffer.byteLength; byte += RECORD_BYTES) {
-          if (view.getUint32(byte, true) !== targetId) continue;
-          pointers.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
-          if (pointers.length >= 40) break;
-        }
-        const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, normalized)));
-        return hits.filter((hit): hit is SearchHit => Boolean(hit));
-      }));
+      // Facebook's numeric key is a Facebook profile ID, not an Israeli national ID.
+      const sources = manifest.sources.filter((source) => source.key !== "facebook");
+      const results = await Promise.all(sources.map((source) => searchSourceById(source, normalized, blockRecords)));
       return mergeHits(results.flat());
     })());
   }
   return idSearchCache.get(normalized)!;
+}
+
+export async function searchFullDatasetsByIdWithDetails(input: string): Promise<SearchHit[]> {
+  return attachFacebookMaritalStatus(await searchFullDatasetsById(input));
 }
 
 function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
@@ -550,12 +617,60 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
   const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions)));
-  return mergeTextSearchHits(hits.flat(), criteria);
+  const allHits = hits.flat();
+  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria), allHits.filter((hit) => hit.sourceKey === "facebook"));
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {
   if (!hit.phone) return false;
   try { return normalizedPhone(hit.phone) === phone; } catch { return false; }
+}
+
+function samePersonName(first: SearchHit, second: SearchHit) {
+  return Boolean(first.firstName && first.lastName && second.firstName && second.lastName)
+    && normalizeText(first.firstName!) === normalizeText(second.firstName!)
+    && normalizeText(first.lastName!) === normalizeText(second.lastName!);
+}
+
+export function applyFacebookDetails(hits: SearchHit[], facebookHits: SearchHit[]) {
+  return hits.map((hit) => {
+    if (hit.sourceKey === "facebook" || hit.maritalStatus || (!hit.phone && !hit.phoneCandidates?.length)) return hit;
+    const phones = Array.from(new Set((hit.phoneCandidates ?? (hit.phone ? [hit.phone] : [])).flatMap((value) => {
+      try { return [normalizedPhone(value)]; } catch { return []; }
+    })));
+    const match = facebookHits.find((facebook) => facebook.sourceKey === "facebook" && facebook.maritalStatus
+      && phones.some((phone) => phoneMatches(facebook, phone)) && samePersonName(hit, facebook));
+    return match ? { ...hit, maritalStatus: match.maritalStatus } : hit;
+  });
+}
+
+async function searchFacebookByPhone(input: string) {
+  const phone = normalizedPhone(input);
+  if (!facebookPhoneCache.has(phone)) {
+    facebookPhoneCache.set(phone, (async () => {
+      try {
+        const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
+        const source = manifest.sources.find((item) => item.key === "facebook");
+        const meta = extensions.indexes["phone-facebook-candidate"];
+        if (!source || !meta) return [] as SearchHit[];
+        const group = await readPostingGroup(meta, hash32(phone), 20_000);
+        const pointers = group.records.slice(0, 500);
+        const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
+        return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone)));
+      } catch {
+        return [] as SearchHit[];
+      }
+    })());
+  }
+  return facebookPhoneCache.get(phone)!;
+}
+
+async function attachFacebookMaritalStatus(hits: SearchHit[]) {
+  const phones = Array.from(new Set(hits.filter((hit) => hit.sourceKey !== "facebook" && (hit.phone || hit.phoneCandidates?.length) && hit.firstName && hit.lastName)
+    .flatMap((hit) => (hit.phoneCandidates ?? (hit.phone ? [hit.phone] : [])).flatMap((value) => { try { return [normalizedPhone(value)]; } catch { return []; } }))));
+  if (!phones.length) return hits;
+  const facebookHits = (await mapLimit(phones, 8, searchFacebookByPhone)).flat();
+  return applyFacebookDetails(hits, facebookHits);
 }
 
 export async function searchFullDatasetsByPhone(input: string) {
@@ -603,26 +718,32 @@ async function getChildren(parentId: string, extensions: ExtensionManifest) {
   return Array.from(ids).slice(0, 120);
 }
 
+export function toFamilyTreePerson(id: string, hits: SearchHit[]): FamilyTreePerson {
+  const primary = mergeHits(hits)[0] ?? hits[0];
+  if (!primary) return { id, nationalId: id, fullName: "לא נמצאה רשומה במקורות" };
+  return {
+    id, nationalId: primary.nationalId, fullName: primary.fullName, firstName: primary.firstName, lastName: primary.lastName,
+    phone: primary.phone, phoneYear: primary.phoneYear, address: primary.address, addressYear: primary.addressYear,
+    previousAddress: primary.previousAddress, previousAddressYear: primary.previousAddressYear,
+    city: primary.city, birthDate: primary.birthDate, age: primary.age, maritalStatus: primary.maritalStatus,
+    sourceNames: primary.sourceNames ?? Array.from(new Set(hits.map((hit) => hit.source))),
+  };
+}
+
 async function getPeople(ids: string[]) {
   const unique = Array.from(new Set(ids.map((id) => displayId(id) ?? "").filter(Boolean))).slice(0, 120);
   const results = await Promise.all(unique.map(async (id) => {
     const hits = await searchFullDatasetsById(id);
     return { id, hits };
   }));
+  const enrichedHits = await attachFacebookMaritalStatus(results.map(({ hits }) => mergeHits(hits)[0]).filter((hit): hit is SearchHit => Boolean(hit)));
+  const detailById = new Map(enrichedHits.map((hit) => [displayId(hit.nationalId) ?? "", hit]));
   const people = new Map<string, FamilyTreePerson>();
   const relationships: FamilyTreeRelationship[] = [];
   for (const { id, hits } of results) {
     const agron = hits.find((hit) => hit.sourceKey === "agron2006");
-    const primary = agron ?? hits.find((hit) => hit.sourceKey === "elector") ?? hits[0];
-    if (!primary) {
-      people.set(id, { id, nationalId: id, fullName: "לא נמצאה רשומה במקורות" });
-      continue;
-    }
-    const sources = Array.from(new Set(hits.map((hit) => hit.source)));
-    people.set(id, {
-      id, nationalId: primary.nationalId, fullName: primary.fullName, firstName: primary.firstName, lastName: primary.lastName,
-      phone: primary.phone, address: primary.address, city: primary.city, birthDate: primary.birthDate, age: primary.age, sourceNames: sources,
-    });
+    const primary = detailById.get(displayId(id) ?? "") ?? mergeHits(hits)[0] ?? hits.find((hit) => hit.sourceKey === "elector") ?? hits[0];
+    people.set(id, toFamilyTreePerson(id, primary ? [primary] : hits));
     if (agron?.fatherId) relationships.push({ id: `${id}-father-${agron.fatherId}`, personAId: id, personBId: agron.fatherId, type: "PARENT", source: "AGRON 2006", confidence: "source-backed", evidence: { field: "father" } });
     if (agron?.motherId) relationships.push({ id: `${id}-mother-${agron.motherId}`, personAId: id, personBId: agron.motherId, type: "PARENT", source: "AGRON 2006", confidence: "source-backed", evidence: { field: "mother" } });
   }

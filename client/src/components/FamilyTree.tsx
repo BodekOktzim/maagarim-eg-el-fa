@@ -9,10 +9,15 @@ export type TreePerson = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phoneYear?: string;
   address?: string;
+  addressYear?: string;
+  previousAddress?: string;
+  previousAddressYear?: string;
   city?: string;
   age?: string;
   birthDate?: string;
+  maritalStatus?: string;
   sourceNames?: string[];
 };
 
@@ -85,11 +90,13 @@ function EmptyNode({ label }: { label: string }) {
 function DetailPanel({ person, onClose, onCenter }: { person: TreePerson; onClose: () => void; onCenter: () => void }) {
   const rows = [
     ["תעודת זהות", person.nationalId],
-    ["טלפון", person.phone],
+    [person.phoneYear ? `טלפון (${person.phoneYear})` : "טלפון", person.phone],
     ["יישוב", person.city],
-    ["כתובת", person.address],
+    [person.addressYear === "2020" ? "כתובת מעודכנת לשנת 2020" : person.addressYear ? `כתובת (${person.addressYear})` : "כתובת", person.address],
+    [person.previousAddressYear ? `כתובת ישנה לשנת ${person.previousAddressYear}` : "כתובת נוספת", person.previousAddress],
     ["גיל במקור", person.age],
     ["תאריך לידה", person.birthDate],
+    ["מצב אישי", person.maritalStatus],
   ].filter((row): row is [string, string] => Boolean(row[1]));
   return (
     <aside className="family-detail-panel min-w-[214px] max-w-[300px] rounded-[18px] border border-[#fa649c]/30 bg-[#281420] p-4 text-right shadow-[0_16px_40px_rgba(0,0,0,0.28)]" aria-label={`פרטים מלאים: ${person.fullName}`}>
