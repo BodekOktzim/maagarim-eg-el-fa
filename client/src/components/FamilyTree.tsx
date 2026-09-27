@@ -88,25 +88,31 @@ function EmptyNode({ label }: { label: string }) {
 }
 
 function DetailPanel({ person, onClose, onCenter }: { person: TreePerson; onClose: () => void; onCenter: () => void }) {
-  const rows = [
+  const personalRows = [
     ["תעודת זהות", person.nationalId],
-    [person.phoneYear ? `טלפון (${person.phoneYear})` : "טלפון", person.phone],
-    ["יישוב", person.city],
-    [person.addressYear === "2020" ? "כתובת מעודכנת לשנת 2020" : person.addressYear ? `כתובת (${person.addressYear})` : "כתובת", person.address],
-    [person.previousAddressYear ? `כתובת ישנה לשנת ${person.previousAddressYear}` : "כתובת נוספת", person.previousAddress],
-    ["גיל במקור", person.age],
     ["תאריך לידה", person.birthDate],
+    ["גיל במקור", person.age],
     ["מצב אישי", person.maritalStatus],
   ].filter((row): row is [string, string] => Boolean(row[1]));
+  const contactRows = [
+    [person.phoneYear ? `טלפון (${person.phoneYear})` : "טלפון", person.phone],
+    [person.addressYear === "2020" ? "כתובת מעודכנת לשנת 2020" : person.addressYear ? `כתובת (${person.addressYear})` : "כתובת", person.address],
+    [person.previousAddressYear ? `כתובת ישנה לשנת ${person.previousAddressYear}` : "כתובת נוספת", person.previousAddress],
+    ["יישוב", person.city],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+  const groups = [
+    { title: "פרטים אישיים", rows: personalRows },
+    { title: "טלפון, כתובות ויישוב", rows: contactRows },
+  ].filter((group) => group.rows.length > 0);
   return (
     <aside className="family-detail-panel min-w-[214px] max-w-[300px] rounded-[18px] border border-[#fa649c]/30 bg-[#281420] p-4 text-right shadow-[0_16px_40px_rgba(0,0,0,0.28)]" aria-label={`פרטים מלאים: ${person.fullName}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#ff8db7]">פרטים מלאים</p><h4 className="mt-1 break-words text-sm font-bold text-white">{person.fullName}</h4></div>
         <button type="button" onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white" aria-label="סגור פרטים"><X size={15}/></button>
       </div>
-      <dl className="mt-3 space-y-2 border-t border-white/10 pt-3">
-        {rows.length ? rows.map(([label, value]) => <div key={label} className="grid grid-cols-[78px_1fr] gap-2 text-xs"><dt className="text-white/45">{label}</dt><dd dir="auto" className="break-words text-white/85">{value}</dd></div>) : <p className="text-xs text-white/45">לא נמצאו פרטים נוספים ברשומות הזמינות.</p>}
-      </dl>
+      <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+        {groups.length ? groups.map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-2.5"><h5 className="mb-2 text-[10px] font-semibold text-fuchsia-100/80">{group.title}</h5><dl className="space-y-1.5">{group.rows.map(([label, value]) => <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2"><dt className="text-[10px] text-white/55">{label}</dt><dd dir="auto" className="mt-1 break-words text-xs font-medium leading-relaxed text-white/90">{value}</dd></div>)}</dl></section>) : <p className="text-xs text-white/45">לא נמצאו פרטים נוספים ברשומות הזמינות.</p>}
+      </div>
       {person.sourceNames?.length ? <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">{person.sourceNames.map((source) => <Badge key={source} className="border border-[#f575a2]/20 bg-[#f575a2]/10 text-[10px] text-[#ffc0d8] hover:bg-[#f575a2]/10">{source}</Badge>)}</div> : null}
       <button type="button" onClick={onCenter} className="mt-3 min-h-9 w-full rounded-xl border border-[#ff6ba3]/25 bg-[#ff4b91]/10 px-3 text-xs font-semibold text-[#ffc0d8] transition hover:bg-[#ff4b91]/20">מרכז את העץ באדם זה</button>
     </aside>

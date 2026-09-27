@@ -17,19 +17,27 @@ const AWAY_TTL_MS = 5 * 60 * 1000;
 type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 
-function searchHitDetails(hit: SearchHit): [string, string][] {
-  return [
+type SearchDetailGroup = { title: string; rows: [string, string][] };
+
+function searchHitDetailGroups(hit: SearchHit): SearchDetailGroup[] {
+  const personalRows: [string, string][] = [
     hit.nationalId ? ["תעודת זהות", hit.nationalId] : undefined,
     hit.facebookId ? ["מזהה Facebook", hit.facebookId] : undefined,
+    hit.birthDate ? ["תאריך לידה", hit.birthDate] : undefined,
+    hit.age ? ["גיל", hit.age] : undefined,
+    hit.maritalStatus ? ["מצב אישי", hit.maritalStatus] : undefined,
+  ].filter((row): row is [string, string] => Boolean(row?.[1]));
+  const contactRows: [string, string][] = [
     hit.phone ? [`טלפון ${hit.phoneYear ? `(${hit.phoneYear})` : ""}`.trim(), hit.phone] : undefined,
     hit.address ? [hit.addressYear === "2020" ? "כתובת מעודכנת (2020)" : hit.addressYear ? `כתובת (${hit.addressYear})` : "כתובת", hit.address] : undefined,
     hit.previousAddress ? [`כתובת ישנה (${hit.previousAddressYear ?? "2006"})`, hit.previousAddress] : undefined,
     hit.city ? ["יישוב", hit.city] : undefined,
     hit.cityCode ? ["קוד יישוב", hit.cityCode] : undefined,
-    hit.age ? ["גיל", hit.age] : undefined,
-    hit.birthDate ? ["תאריך לידה", hit.birthDate] : undefined,
-    hit.maritalStatus ? ["מצב אישי", hit.maritalStatus] : undefined,
   ].filter((row): row is [string, string] => Boolean(row?.[1]));
+  return [
+    { title: "פרטים אישיים", rows: personalRows },
+    { title: "טלפון, כתובות ויישוב", rows: contactRows },
+  ].filter((group) => group.rows.length > 0);
 }
 
 function readSessionStart() {
@@ -258,7 +266,7 @@ export default function GitHubPagesHome() {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>
         {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
-          <dl className="mt-4 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2">{searchHitDetails(hit).map(([label, value]) => <div key={label}><dt className="text-xs text-white/45">{label}</dt><dd dir="auto" className={label.includes("זהות") || label.includes("Facebook") ? "font-mono" : undefined}>{value}</dd></div>)}</dl>
+          <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
           {(hit.fatherId || hit.motherId || hit.spouseId) && <div className="mt-4 border-t border-white/10 pt-3"><p className="mb-2 text-xs text-white/45">מזהים קשורים הרשומים במקור:</p><div className="flex flex-wrap gap-2">{hit.fatherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אב · {hit.fatherId}</span>}{hit.motherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אם · {hit.motherId}</span>}{hit.spouseId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">בן/בת זוג · {hit.spouseId}</span>}</div></div>}
           {hit.nationalId && <button type="button" onClick={() => void openFamily(hit)} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button>}
         </article>)}</div> : !searchError ? <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהפרטים הוקלדו נכון ונסה שוב.</div> : null}
