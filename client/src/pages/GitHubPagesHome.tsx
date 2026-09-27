@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
+import { CalendarDays, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   searchFamilyTreeById,
   searchFullDatasetsByIdWithDetails,
@@ -9,6 +10,7 @@ import {
   searchFullDatasetsByText,
   type FamilyTreeData,
   type SearchHit,
+  type TextMatchMode,
 } from "@/lib/full-dataset-search";
 
 const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
@@ -69,6 +71,7 @@ export default function GitHubPagesHome() {
   const [mode, setMode] = useState<SearchMode>("national-id");
   const [query, setQuery] = useState("");
   const [criteria, setCriteria] = useState({ firstName: "", lastName: "", city: "", age: "" });
+  const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -153,8 +156,8 @@ export default function GitHubPagesHome() {
       } else {
         const searchCriteria = Object.fromEntries(Object.entries(criteria).map(([key, value]) => [key, value.trim()])) as typeof criteria;
         if (!Object.values(searchCriteria).some(Boolean)) throw new Error("יש למלא לפחות שדה אחד: שם פרטי, שם משפחה, יישוב או גיל.");
-        setLastQuery([searchCriteria.firstName, searchCriteria.lastName, searchCriteria.city, searchCriteria.age && `גיל ${searchCriteria.age}`].filter(Boolean).join(" · "));
-        setResults(await searchFullDatasetsByText(searchCriteria));
+        setLastQuery([...([searchCriteria.firstName, searchCriteria.lastName, searchCriteria.city, searchCriteria.age && `גיל ${searchCriteria.age}`].filter(Boolean)), textMatchMode === "exact" ? "מדויק" : "דומה"].join(" · "));
+        setResults(await searchFullDatasetsByText(searchCriteria, textMatchMode));
       }
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
@@ -248,13 +251,34 @@ export default function GitHubPagesHome() {
             <input inputMode="numeric" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="מזהה Facebook מספרי" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             <button type="submit" disabled={isSearching || !/^\d{1,18}$/.test(query.replace(/\D/g, ""))} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש מזהה</>}</button>
           </div>}
-          {mode === "details" && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <input autoComplete="off" value={criteria.firstName} onChange={(event) => setCriteria((prev) => ({ ...prev, firstName: event.target.value }))} placeholder="שם פרטי" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-            <input autoComplete="off" value={criteria.lastName} onChange={(event) => setCriteria((prev) => ({ ...prev, lastName: event.target.value }))} placeholder="שם משפחה" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-            <input autoComplete="off" value={criteria.city} onChange={(event) => setCriteria((prev) => ({ ...prev, city: event.target.value }))} placeholder="יישוב" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-            <input type="number" min="1" max="120" inputMode="numeric" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-            <button type="submit" disabled={isSearching} className="h-12 rounded-xl bg-[#f2a9d2] px-6 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-2 lg:col-span-4">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חיפוש לפי פרטים</>}</button>
-          </div>}
+          {mode === "details" && <>
+            <section className="rounded-2xl border border-white/10 bg-black/10 p-3 sm:col-span-2 lg:col-span-4" aria-label="מצב התאמת החיפוש">
+              <p className="mb-2 text-xs font-semibold text-white/75">איך להתאים את החיפוש?</p>
+              <div className="grid max-w-[420px] grid-cols-2 gap-3">
+                <div className="flex flex-col items-stretch gap-1.5">
+                  <Popover>
+                    <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
+                    <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש מדויק</p><p className="mt-1">מחפש לפי האותיות שהקלדת ובאותו סדר. לדוגמה, „כהו” לא יחזיר את „כהן”. מתאים כשחשוב לצמצם תוצאות.</p></PopoverContent>
+                  </Popover>
+                  <button type="button" aria-pressed={textMatchMode === "exact"} onClick={() => setTextMatchMode("exact")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "exact" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>מדויק</button>
+                </div>
+                <div className="flex flex-col items-stretch gap-1.5">
+                  <Popover>
+                    <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
+                    <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש דומה</p><p className="mt-1">מחפש גם כשיש טעות של אות אחת בשם או ביישוב. לדוגמה, „כהו” עשוי למצוא את „כהן”. הגיל, אם צוין, עדיין חייב להתאים בדיוק; ייתכנו תוצאות נוספות.</p></PopoverContent>
+                  </Popover>
+                  <button type="button" aria-pressed={textMatchMode === "similar"} onClick={() => setTextMatchMode("similar")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "similar" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>דומה</button>
+                </div>
+              </div>
+            </section>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <input autoComplete="off" value={criteria.firstName} onChange={(event) => setCriteria((prev) => ({ ...prev, firstName: event.target.value }))} placeholder="שם פרטי" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
+              <input autoComplete="off" value={criteria.lastName} onChange={(event) => setCriteria((prev) => ({ ...prev, lastName: event.target.value }))} placeholder="שם משפחה" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
+              <input autoComplete="off" value={criteria.city} onChange={(event) => setCriteria((prev) => ({ ...prev, city: event.target.value }))} placeholder="יישוב" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
+              <input type="number" min="1" max="120" inputMode="numeric" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
+              <button type="submit" disabled={isSearching} className="h-12 rounded-xl bg-[#f2a9d2] px-6 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-2 lg:col-span-4">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חיפוש לפי פרטים</>}</button>
+            </div>
+          </>}
         </form>
         {searchError && <p role="alert" className="mt-3 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{searchError}</p>}
         <div className="mt-4 text-xs text-white/45">התוצאות מאוחדות לרשומה אחת; פרטי כתובת וטלפון מוצגים לפי השנה הזמינה.</div>
@@ -265,7 +289,7 @@ export default function GitHubPagesHome() {
       {searched && !isSearching && <section className="space-y-4">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>
         {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
           {(hit.fatherId || hit.motherId || hit.spouseId) && <div className="mt-4 border-t border-white/10 pt-3"><p className="mb-2 text-xs text-white/45">מזהים קשורים הרשומים במקור:</p><div className="flex flex-wrap gap-2">{hit.fatherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אב · {hit.fatherId}</span>}{hit.motherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אם · {hit.motherId}</span>}{hit.spouseId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">בן/בת זוג · {hit.spouseId}</span>}</div></div>}
           {hit.nationalId && <button type="button" onClick={() => void openFamily(hit)} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button>}

@@ -9,7 +9,7 @@ type SourceKey = "agron2006" | "elector" | "facebook";
 export type SearchHit = {
   source: string;
   sourceKey: SourceKey;
-  confidence: "exact-id" | "candidate-id-field" | "phone-match" | "facebook-id-match" | "text-match";
+  confidence: "exact-id" | "candidate-id-field" | "phone-match" | "facebook-id-match" | "text-match" | "approximate-text-match";
   nationalId: string;
   fullName: string;
   firstName?: string;
@@ -39,6 +39,8 @@ export type TextSearchCriteria = {
   city?: string;
   age?: string;
 };
+
+export type TextMatchMode = "exact" | "similar";
 
 export type FamilyTreePerson = {
   id: string;
@@ -142,6 +144,44 @@ function normalizedPhone(value: string) {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/[׳'".,]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeFuzzyToken(value: string) {
+  const finalLetters: Record<string, string> = { ך: "כ", ם: "מ", ן: "נ", ף: "פ", ץ: "צ" };
+  return normalizeText(value).replace(/[ךםןףץ]/g, (letter) => finalLetters[letter] ?? letter);
+}
+
+function withinOneEdit(left: string, right: string) {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1 || Math.min(left.length, right.length) < 3) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let edits = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+    edits += 1;
+    if (edits > 1) return false;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else { leftIndex += 1; rightIndex += 1; }
+  }
+  return edits + (leftIndex < left.length || rightIndex < right.length ? 1 : 0) <= 1;
+}
+
+function textValueMatches(value: string, term: string, matchMode: TextMatchMode) {
+  const normalizedValue = normalizeText(value);
+  const normalizedTerm = normalizeText(term);
+  if (!normalizedTerm || normalizedValue.includes(normalizedTerm)) return true;
+  if (matchMode !== "similar") return false;
+  const queryWords = normalizeFuzzyToken(normalizedTerm).split(" ").filter(Boolean);
+  const valueWords = normalizeFuzzyToken(normalizedValue).split(" ").filter(Boolean);
+  if (!queryWords.length || queryWords.some((word) => word.length < 3)) return false;
+  return valueWords.some((_, start) => start + queryWords.length <= valueWords.length
+    && queryWords.every((word, index) => withinOneEdit(word, valueWords[start + index])));
 }
 
 function bigrams(value: string) {
@@ -523,23 +563,23 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
   return output;
 }
 
-function textMatches(hit: SearchHit, criteria: TextSearchCriteria) {
+function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   for (const field of ["firstName", "lastName", "city"] as const) {
     const term = criteria[field]?.trim();
-    if (term && !normalizeText(String(hit[field] ?? "")).includes(normalizeText(term))) return false;
+    if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
   }
   if (criteria.age && String(Number(hit.age)) !== String(Number(criteria.age))) return false;
   return true;
 }
 
-export function textMatchesWithinSource(hit: SearchHit, criteria: TextSearchCriteria) {
+export function textMatchesWithinSource(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   // City names are indexed only in AGRON. Keep Elector candidates by name until
   // after merging, when the AGRON city can be checked against the unified hit.
   const sourceCriteria = hit.sourceKey === "elector" ? { ...criteria, city: undefined } : criteria;
-  return textMatches(hit, sourceCriteria);
+  return textMatches(hit, sourceCriteria, matchMode);
 }
 
-export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCriteria) {
+export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   const groups = new Map<string, SearchHit[]>();
   for (const hit of hits) {
     const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
@@ -548,12 +588,20 @@ export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCrite
     groups.set(key, group);
   }
   const withoutCity = { ...criteria, city: undefined };
-  const eligible = Array.from(groups.values()).filter((group) => {
-    const nameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity));
-    const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }));
-    return nameAndAgeMatch && cityMatch;
+  const eligible: { key: string; hits: SearchHit[]; approximate: boolean }[] = [];
+  groups.forEach((group, key) => {
+    const nameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, matchMode));
+    const exactNameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, "exact"));
+    const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, matchMode));
+    const exactCityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, "exact"));
+    if (nameAndAgeMatch && cityMatch) eligible.push({ key, hits: group, approximate: !exactNameAndAgeMatch || !exactCityMatch });
   });
-  return mergeHits(eligible.flat()).slice(0, 250);
+  const approximateKeys = new Set(eligible.filter((group) => group.approximate).map((group) => group.key));
+  const merged = mergeHits(eligible.flatMap((group) => group.hits)).slice(0, 250);
+  return merged.map((hit) => {
+    const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
+    return approximateKeys.has(key) ? { ...hit, confidence: "approximate-text-match" as const } : hit;
+  });
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promise<R>): Promise<R[]> {
@@ -569,12 +617,12 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
   return results;
 }
 
-async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest) {
+async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
   const criteriaItems = criteriaForSource(criteria, source.key);
   const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof SearchHit; count: number }[] = [];
   for (const criterion of criteriaItems) {
-    const grams = bigrams(criterion.value);
+    const grams = bigrams(matchMode === "similar" ? normalizeFuzzyToken(criterion.value) : criterion.value);
     if (normalizeText(criterion.value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
     for (const gram of grams) {
       const meta = extensions.indexes[criterion.indexKey];
@@ -595,19 +643,33 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
   }
   if (!candidates.length) return [] as SearchHit[];
-  const selected = candidates.reduce((best, candidate) => candidate.count < best.count ? candidate : best);
-  const group = await readPostingGroup(selected.meta, selected.key, 300_000, true);
-  const seen = new Set<number>();
-  const pointers = group.records.filter((pointer) => {
-    if (seen.has(pointer.offset)) return false;
-    seen.add(pointer.offset);
-    return true;
-  }).slice(0, 400);
+  const selectedCandidates = matchMode === "similar"
+    ? (["firstName", "lastName", "city", "age"] as const).flatMap((field) => candidates
+      .filter((candidate) => candidate.field === field)
+      .sort((left, right) => left.count - right.count)
+      .slice(0, field === "age" ? 1 : 4))
+    : [candidates.reduce((best, candidate) => candidate.count < best.count ? candidate : best)];
+  const pointerScores = new Map<number, { pointer: RowPointer; score: number; order: number }>();
+  const postingGroups = await Promise.all(selectedCandidates.map((candidate) =>
+    readPostingGroup(candidate.meta, candidate.key, matchMode === "similar" ? 10_000 : 300_000, true)));
+  for (let order = 0; order < postingGroups.length; order += 1) {
+    const group = postingGroups[order];
+    for (const pointer of group.records) {
+      const current = pointerScores.get(pointer.offset);
+      if (current) current.score += 1;
+      else pointerScores.set(pointer.offset, { pointer, score: 1, order });
+    }
+  }
+  const rowLimit = matchMode === "similar" ? 1_000 : 400;
+  const pointers = Array.from(pointerScores.values())
+    .sort((left, right) => right.score - left.score || left.order - right.order)
+    .slice(0, rowLimit)
+    .map(({ pointer }) => pointer);
   const hits = await mapLimit(pointers, 16, (pointer) => fetchSourceRow(source, pointer, ""));
-  return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria)));
+  return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }
 
-export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
+export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
@@ -616,9 +678,9 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
-  const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions)));
+  const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
   const allHits = hits.flat();
-  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria), allHits.filter((hit) => hit.sourceKey === "facebook"));
+  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria, matchMode), allHits.filter((hit) => hit.sourceKey === "facebook"));
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {

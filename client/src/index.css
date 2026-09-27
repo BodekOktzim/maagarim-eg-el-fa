@@ -121,7 +121,7 @@
   .family-detail-panel { width: min(260px, 70vw); }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 899px) {
   .tree-stage { width: 100%; min-width: 0; }
   .family-pair-detail-grid { width: 100%; flex-direction: column; align-items: stretch; }
   .family-pair-detail-grid > .family-node[aria-pressed="true"] { order: 1; width: 100%; }

@@ -110,6 +110,18 @@ describe("unified AGRON/Elector result merging", () => {
     expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "חיפה" })).toHaveLength(0);
   });
 
+  it("finds a one-letter surname typo only in similar mode and keeps age exact", () => {
+    const person = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", age: "52" });
+    expect(textMatchesWithinSource(person, { lastName: "כהו" })).toBe(false);
+    expect(textMatchesWithinSource(person, { lastName: "כהו" }, "similar")).toBe(true);
+    expect(mergeTextSearchHits([person], { lastName: "כהו" }, "similar")[0]?.confidence).toBe("approximate-text-match");
+    expect(textMatchesWithinSource(person, { lastName: "כהו", age: "51" }, "similar")).toBe(false);
+    expect(textMatchesWithinSource(person, { lastName: "כהן", age: "52" }, "similar")).toBe(true);
+    const cityRecord = hit({ city: "מטולה" });
+    expect(textMatchesWithinSource(cityRecord, { city: "מטולא" })).toBe(false);
+    expect(textMatchesWithinSource(cityRecord, { city: "מטולא" }, "similar")).toBe(true);
+  });
+
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {
     const [merged] = mergeHits([
       hit({ source: "AGRON 2006", fatherId: "000000001", motherId: "000000002" }),

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { GitBranch, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
+import { GitBranch, Info, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type TreePerson = {
   id: string;
@@ -105,7 +106,7 @@ function DetailPanel({ person, onClose, onCenter }: { person: TreePerson; onClos
     { title: "טלפון, כתובות ויישוב", rows: contactRows },
   ].filter((group) => group.rows.length > 0);
   return (
-    <aside className="family-detail-panel w-full min-w-0 max-w-[340px] rounded-[18px] border border-[#fa649c]/30 bg-[#281420] p-3 text-right shadow-[0_16px_40px_rgba(0,0,0,0.28)] sm:max-w-[440px] lg:w-[260px] lg:min-w-[214px] lg:max-w-[300px] lg:p-4" aria-label={`פרטים מלאים: ${person.fullName}`}>
+    <aside className="family-detail-panel w-full min-w-0 max-w-[340px] rounded-[18px] border border-[#fa649c]/30 bg-[#281420] p-3 text-right shadow-[0_16px_40px_rgba(0,0,0,0.28)] sm:max-w-[440px] min-[900px]:w-[260px] min-[900px]:min-w-[214px] min-[900px]:max-w-[300px] min-[900px]:p-4" aria-label={`פרטים מלאים: ${person.fullName}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#ff8db7]">פרטים מלאים</p><h4 className="mt-1 break-words text-sm font-bold text-white">{person.fullName}</h4></div>
         <button type="button" onClick={onClose} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white" aria-label="סגור פרטים"><X size={15}/></button>
@@ -257,10 +258,24 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
         <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#ff9fc1]"><GitBranch size={14}/> מפת קשרים משפחתיים</div><p className="mt-1 text-sm text-white/55">לחצו על כרטיס לפרטים; בכרטיס הפרטים אפשר לבחור למרכז את העץ באדם הזה.</p></div>
         <Badge className="border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10"><ShieldCheck size={13} className="ml-1"/> VERIFIED / SOURCE-BACKED</Badge>
       </div>
-      <div className="border-b border-[#f06298]/10 bg-[#23121d]/70 px-4 py-3 text-center text-xs leading-relaxed text-[#f3bfd1]/75 lg:hidden">במסך צר ענפי המשפחה מסודרים לפי דורות בעמודה, כדי שיהיה נוח לקרוא ולבחור אדם.</div>
+      <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-[#f06298]/10 bg-[#23121d]/70 px-4 py-3 text-center text-xs leading-relaxed text-[#f3bfd1]/80 min-[900px]:hidden">
+        <span>בטלפון העץ מוצג בעמודה. אפשר לבחור „אתר למחשב” בדפדפן כדי לראות פריסה רחבה יותר.</span>
+        <Popover>
+          <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 font-semibold text-fuchsia-100 underline decoration-dotted underline-offset-4 hover:bg-white/5" aria-label="הסבר איך לעבור לאתר למחשב"><Info size={13}/>הסבר איך</button></PopoverTrigger>
+          <PopoverContent dir="rtl" side="top" align="center" className="w-80 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85">
+            <p className="font-semibold text-fuchsia-100">איך עוברים לאתר למחשב?</p>
+            <p className="mt-1">ב-Chrome בטלפון: פתחו את תפריט שלוש הנקודות ⋮ וסמנו „אתר למחשב” או „גרסת מחשב”.</p>
+            <div className="mt-3 rounded-xl border border-white/10 bg-[#100b17] p-2.5" aria-label="המחשה של תפריט הדפדפן">
+              <div className="mb-2 flex items-center gap-2 text-[10px] text-white/50"><span className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 text-sm font-bold text-white">⋮</span><span>תפריט הדפדפן</span></div>
+              <div className="flex items-center justify-between rounded-lg border border-fuchsia-200/30 bg-fuchsia-200/10 px-3 py-2 font-semibold text-fuchsia-100"><span>▣　אתר למחשב</span><span aria-hidden="true">✓</span></div>
+            </div>
+            <p className="mt-2 text-white/60">בדפדפנים אחרים חפשו בתפריט אפשרות בשם „אתר למחשב”. כדי לחזור לתצוגת הטלפון, בטלו את הסימון. מיקום האפשרות משתנה לפי הדפדפן.</p>
+          </PopoverContent>
+        </Popover>
+      </div>
       <div className="tree-scroll overflow-x-auto px-3 py-6 sm:px-6 sm:py-8">
-        <div className="tree-stage mx-auto w-full min-w-0 max-w-[1480px] space-y-6 lg:min-w-[1040px]" dir="rtl">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-5">
+        <div className="tree-stage mx-auto w-full min-w-0 max-w-[1480px] space-y-6 min-[900px]:min-w-[1040px]" dir="rtl">
+          <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-3 min-[900px]:gap-5">
             <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
               <SectionTitle>דור סבים · צד האב</SectionTitle>
               <div className="space-y-3"><p className="text-center text-[10px] text-white/35">סבא וסבתא רבה</p>{renderGroup(family.paternalGreatGrandparents, "סבא/סבתא רבה", "לא נמצאו רשומות מאומתות")}</div>
@@ -280,7 +295,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
             </section>
           </div>
 
-          <div className="grid grid-cols-1 items-stretch gap-3 lg:grid-cols-3 lg:gap-5">
+          <div className="grid grid-cols-1 items-stretch gap-3 min-[900px]:grid-cols-3 min-[900px]:gap-5">
             <section className="tree-side-branch flex flex-col gap-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
               <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[#ffa2c3]"><UsersRound size={14}/> דודים ודודות · צד האב</div>
               {renderGroup(family.paternalAuntsUncles, "דוד/ה", "אין רשומת אח/ות להורה")}
@@ -303,7 +318,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:gap-5">
+          <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-3 min-[900px]:gap-5">
             <section className="tree-side-branch space-y-4 rounded-[22px] border border-[#e56a9c]/15 bg-[#e56a9c]/[0.025] p-4">
               <SectionTitle>בני ובנות דודים · צד האב</SectionTitle>{renderGroup(family.paternalCousins, "בן/בת דוד", "לא נמצאו רשומות מתועדות")}
             </section>
