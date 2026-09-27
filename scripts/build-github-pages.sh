@@ -9,9 +9,11 @@ GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" pnpm exec vite build
 
 rm -rf docs assets __manus__
 rm -f index.html .nojekyll
+rm -f service-worker.js service-worker-*.js pwa-version.json
 cp -a dist/public/. .
 rm -rf __manus__
 touch .nojekyll
+node scripts/build-pwa-assets.mjs "$ROOT" "$BUILD_ID" "/maagarim-eg-el-fa/"
 
 echo "GitHub Pages site built at the repository root: $ROOT"
 echo "The static UI uses public Git LFS Range requests and compact sidecar indexes for ID, phone, text, Facebook ID, and family search; source rows remain unchanged."

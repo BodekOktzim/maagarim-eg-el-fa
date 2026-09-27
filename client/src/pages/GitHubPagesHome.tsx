@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
+import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
+import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { buildSearchResultRows, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
   searchFamilyTreeById,
   searchFullDatasetsByIdWithDetails,
@@ -76,6 +78,9 @@ export default function GitHubPagesHome() {
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [exportFormat, setExportFormat] = useState<SearchExportFormat>("csv");
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [familyData, setFamilyData] = useState<FamilyTreeData | null>(null);
   const [familyCentralId, setFamilyCentralId] = useState("");
@@ -84,6 +89,29 @@ export default function GitHubPagesHome() {
 
   const normalizedDigits = useMemo(() => normalizeId(query), [query]);
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
+  const exportSearchResults = async () => {
+    if (!results.length || isExporting) return;
+    setIsExporting(true);
+    setExportError("");
+    try {
+      const rows = buildSearchResultRows(results);
+      const blob = await createSearchExportBlob(rows, exportFormat);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[-:]/g, "").replace(/T/, "_").slice(0, 15);
+      const extension = SEARCH_EXPORT_FORMATS.find((format) => format.id === exportFormat)!.extension;
+      link.href = url;
+      link.download = `osint-search-results_${timestamp}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setExportError("הייצוא נכשל. נסה פורמט אחר או נסה שוב.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordError("");
@@ -201,7 +229,8 @@ export default function GitHubPagesHome() {
   if (!unlocked) {
     return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100">
       <main className="w-full max-w-xl space-y-5">
-        <div className="rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9">
+          <div className="fixed left-4 top-4 z-40"><PwaControls/></div>
+          <div className="rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-fuchsia-300/15 text-fuchsia-200"><LockKeyhole size={26}/></div>
           <h1 className="mt-5 text-center"><span className="bg-gradient-to-r from-fuchsia-200 via-white to-violet-200 bg-clip-text font-serif text-3xl font-bold tracking-[0.12em] text-transparent sm:text-4xl">OSINT Search</span></h1>
           <form onSubmit={unlock} className="mt-7 space-y-3">
@@ -224,9 +253,9 @@ export default function GitHubPagesHome() {
 
   return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
+      <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button>
+        <div className="flex items-center gap-2"><PwaControls/><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
       </div>
     </header>
 
@@ -287,7 +316,7 @@ export default function GitHubPagesHome() {
       {isSearching && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">החיפוש מתבצע…</p><p className="mt-1 text-sm text-white/50">נבדקים האינדקסים המלאים של המקורות ונשלפות רק שורות מתאימות.</p></div></section>}
 
       {searched && !isSearching && <section className="space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>{results.length > 0 && <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="search-export-format">סוג קובץ לייצוא</label><select id="search-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as SearchExportFormat)} className="min-h-10 rounded-xl border border-white/15 bg-[#17101f] px-3 text-xs text-white"><option value="csv">CSV — Excel / Sheets</option><option value="tsv">TSV — טבלה</option><option value="json">JSON — נתונים</option><option value="jsonl">JSONL — שורה לרשומה</option><option value="txt">TXT — טקסט</option><option value="html">HTML — דף טבלה</option><option value="xml">XML — נתונים</option><option value="xlsx">XLSX — Excel</option></select><button type="button" onClick={() => void exportSearchResults()} disabled={isExporting} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#f2a9d2] px-4 text-xs font-semibold text-[#30123e] hover:bg-[#f7c2e0] disabled:opacity-60">{isExporting ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}ייצא</button></div>}{results.length > 0 && <p className="w-full text-xs text-white/40">הקובץ עשוי לכלול מידע אישי — שמרו אותו במקום מוגן.</p>}{exportError && <p role="alert" className="w-full text-xs text-rose-200">{exportError}</p>}</div>
         {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
