@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 BUILD_ID="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+node scripts/build-offline-data-manifest.mjs "$BUILD_ID"
 GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" pnpm exec vite build
 
 rm -rf docs assets __manus__

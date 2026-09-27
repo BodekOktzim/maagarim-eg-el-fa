@@ -1,3 +1,5 @@
+import { readOfflineFile, readOfflineUrlRange } from "./offline-data";
+
 const RECORD_BYTES = 16;
 const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/main";
 const INDEX_ROOT = MEDIA_ROOT;
@@ -228,6 +230,8 @@ async function getExtensionManifest(): Promise<ExtensionManifest> {
 
 async function getByteRange(url: string, start: number, endInclusive: number, label: string): Promise<ArrayBuffer> {
   if (endInclusive < start) return new ArrayBuffer(0);
+  const offline = await readOfflineUrlRange(url, start, endInclusive);
+  if (offline) return offline;
   const request = (target: string) => fetch(target, {
     headers: { Range: `bytes=${start}-${endInclusive}` },
     cache: "no-store",
@@ -254,10 +258,13 @@ function readSparse64(view: DataView, index: number) {
 async function getSparse(file: string) {
   const url = `${SEEK_ROOT}/${file}`;
   if (!sparseCache.has(url)) {
-    sparseCache.set(url, fetch(url, { cache: "no-cache" }).then(async (response) => {
+    sparseCache.set(url, (async () => {
+      const offline = await readOfflineFile(`index-seek/${file}`);
+      if (offline) return offline;
+      const response = await fetch(url, { cache: "no-cache" });
       if (!response.ok) throw new Error(`לא ניתן לטעון את קובץ העזר ${file}.`);
       return response.arrayBuffer();
-    }));
+    })());
   }
   return sparseCache.get(url)!;
 }

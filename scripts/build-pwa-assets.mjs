@@ -7,7 +7,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const siteRoot = path.resolve(process.argv[2] || repoRoot);
 const buildId = process.argv[3] || "dev";
 const basePath = process.argv[4] || "/maagarim-eg-el-fa/";
-const shellFiles = ["index.html", "manifest.webmanifest", "pwa-icon-192.png", "pwa-icon-512.png"];
+const shellFiles = ["index.html", "manifest.webmanifest", "pwa-icon-192.png", "pwa-icon-512.png", "index-seek/offline-data-manifest.json"];
 
 async function addDirectoryFiles(relativeDirectory) {
   const absoluteDirectory = path.join(siteRoot, relativeDirectory);

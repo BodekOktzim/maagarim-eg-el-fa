@@ -9,6 +9,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import {
+  deleteOfflineData,
+  formatBytes as formatOfflineBytes,
+  getOfflineState,
+  pauseOfflineDownload,
+  refreshOfflineState,
+  startOfflineDownload,
+  subscribeOfflineDownload,
+  type OfflineDownloadState,
+} from "@/lib/offline-data";
+
 const BUILD_ID = String(import.meta.env.VITE_BUILD_ID ?? "dev");
 const APP_BASE = import.meta.env.BASE_URL;
 
@@ -75,6 +86,8 @@ export default function PwaControls() {
   const [downloadProgress, setDownloadProgress] = useState<Progress | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [storage, setStorage] = useState<StorageEstimate | null>(null);
+  const [offlineDialogOpen, setOfflineDialogOpen] = useState(false);
+  const [offlineState, setOfflineState] = useState<OfflineDownloadState>(getOfflineState());
   const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   const refreshStorageEstimate = useCallback(async () => {
@@ -111,6 +124,12 @@ export default function PwaControls() {
       displayMode.removeEventListener?.("change", onDisplayModeChange);
     };
   }, [refreshStorageEstimate]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeOfflineDownload(setOfflineState);
+    void refreshOfflineState();
+    return () => { unsubscribe(); };
+  }, []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -270,6 +289,22 @@ export default function PwaControls() {
     }
   };
 
+  const beginOfflineDownload = async () => {
+    try {
+      await startOfflineDownload();
+      await refreshStorageEstimate();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setStatusMessage(error instanceof Error ? error.message : "הורדת נתוני האופליין נכשלה.");
+      }
+    }
+  };
+
+  const openOfflineDialog = () => {
+    setOfflineDialogOpen(true);
+    void refreshOfflineState();
+  };
+
   const availableBytes = storage?.quota && storage.usage !== undefined
     ? Math.max(0, storage.quota - storage.usage)
     : undefined;
@@ -282,6 +317,7 @@ export default function PwaControls() {
 
   return <>
     <div className="flex items-center gap-2">
+      <button type="button" onClick={openOfflineDialog} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200/25 bg-emerald-200/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-200/20"><HardDriveDownload size={15}/><span>נתוני אופליין</span></button>
       {!isInstalled && <button type="button" disabled={!latestRelease} onClick={() => { setStatusMessage(""); setInstallDialogOpen(true); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-200/10 px-3 py-2 text-xs font-medium text-fuchsia-100 transition hover:bg-fuchsia-200/20 disabled:cursor-wait disabled:opacity-50">
         <Smartphone size={15}/><span>{latestRelease ? "התקנה" : "בודק גודל…"}</span>
       </button>}
@@ -291,6 +327,27 @@ export default function PwaControls() {
     </div>
 
     {statusMessage && <p role="status" className="fixed bottom-4 left-4 z-[60] max-w-sm rounded-xl border border-white/15 bg-[#20102b] px-4 py-3 text-sm text-white shadow-2xl">{statusMessage}</p>}
+
+    <Dialog open={offlineDialogOpen} onOpenChange={(open) => { if (offlineState.status !== "downloading") setOfflineDialogOpen(open); }}>
+      <DialogContent dir="rtl" className="max-w-lg border-white/10 bg-[#20102b] text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-xl"><HardDriveDownload className="text-emerald-200"/>חיפוש ללא אינטרנט</DialogTitle>
+          <DialogDescription className="text-white/65">ההורדה אינה מתחילה אוטומטית. היא שומרת את מקורות הנתונים ואת כל האינדקסים הדרושים לחיפוש מלא גם אם האתר יימחק.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 rounded-xl border border-white/10 bg-black/15 p-4 text-sm">
+          <p className="flex items-center justify-between gap-4"><span className="text-white/60">גודל כולל להורדה</span><strong>{formatOfflineBytes(offlineState.totalBytes)}</strong></p>
+          <p className="flex items-center justify-between gap-4"><span className="text-white/60">כבר נשמר במכשיר</span><strong>{formatOfflineBytes(offlineState.downloadedBytes)}</strong></p>
+          <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום פנוי משוער</span><strong>{formatOfflineBytes(availableBytes)}</strong></p>
+        </div>
+        {offlineState.status === "downloading" && <div className="space-y-2" role="status"><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${offlineState.totalBytes ? Math.min(100, offlineState.downloadedBytes / offlineState.totalBytes * 100) : 4}%` }}/></div><p className="text-xs text-white/70">מוריד {formatOfflineBytes(offlineState.downloadedBytes)} מתוך {formatOfflineBytes(offlineState.totalBytes)}{offlineState.currentPath ? ` · ${offlineState.currentPath}` : ""}</p></div>}
+        {offlineState.status === "complete" ? <p className="rounded-lg bg-emerald-400/10 p-3 text-sm leading-6 text-emerald-100">כל הנתונים נשמרו. החיפוש יכול לעבוד ללא חיבור לאינטרנט כל עוד הנתונים המקומיים לא נמחקו.</p> : <p className="text-xs leading-6 text-white/55">מי שלא יוריד את הנתונים יוכל להתקין את האפליקציה, אבל החיפוש ימשיך להיות תלוי באתר ובחיבור לאינטרנט. ההורדה היא בערך 7.1GB וניתנת להשהיה ולהמשך.</p>}
+        {offlineState.error && <p role="alert" className="rounded-lg bg-rose-400/10 p-3 text-sm text-rose-200">{offlineState.error}</p>}
+        <DialogFooter className="gap-2 sm:justify-start">
+          {offlineState.status === "complete" ? <button type="button" onClick={() => void deleteOfflineData()} className="min-h-11 rounded-xl border border-rose-200/20 px-4 text-rose-100 hover:bg-rose-400/10">מחק נתונים מהמכשיר</button> : offlineState.status === "downloading" ? <button type="button" onClick={pauseOfflineDownload} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-200 px-4 font-semibold text-[#143b2a] hover:bg-emerald-100">השהה הורדה</button> : <button type="button" onClick={() => void beginOfflineDownload()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-200 px-4 font-semibold text-[#143b2a] hover:bg-emerald-100">{offlineState.downloadedBytes ? "המשך הורדה" : "התחל הורדה"}</button>}
+          <button type="button" disabled={offlineState.status === "downloading"} onClick={() => setOfflineDialogOpen(false)} className="min-h-11 rounded-xl border border-white/15 px-4 text-white/75 hover:bg-white/5 disabled:opacity-50">סגור</button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={installDialogOpen} onOpenChange={setInstallDialogOpen}>
       <DialogContent dir="rtl" className="max-w-md border-white/10 bg-[#20102b] text-white">
