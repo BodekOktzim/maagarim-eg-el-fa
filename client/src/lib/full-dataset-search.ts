@@ -465,6 +465,30 @@ function textMatches(hit: SearchHit, criteria: TextSearchCriteria) {
   return true;
 }
 
+export function textMatchesWithinSource(hit: SearchHit, criteria: TextSearchCriteria) {
+  // City names are indexed only in AGRON. Keep Elector candidates by name until
+  // after merging, when the AGRON city can be checked against the unified hit.
+  const sourceCriteria = hit.sourceKey === "elector" ? { ...criteria, city: undefined } : criteria;
+  return textMatches(hit, sourceCriteria);
+}
+
+export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCriteria) {
+  const groups = new Map<string, SearchHit[]>();
+  for (const hit of hits) {
+    const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
+    const group = groups.get(key) ?? [];
+    group.push(hit);
+    groups.set(key, group);
+  }
+  const withoutCity = { ...criteria, city: undefined };
+  const eligible = Array.from(groups.values()).filter((group) => {
+    const nameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity));
+    const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }));
+    return nameAndAgeMatch && cityMatch;
+  });
+  return mergeHits(eligible.flat()).slice(0, 250);
+}
+
 async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
   let next = 0;
@@ -513,7 +537,7 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     return true;
   }).slice(0, 400);
   const hits = await mapLimit(pointers, 16, (pointer) => fetchSourceRow(source, pointer, ""));
-  return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatches(hit, criteria))).slice(0, 250);
+  return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria)));
 }
 
 export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
@@ -526,7 +550,7 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria) {
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
   const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions)));
-  return mergeHits(hits.flat()).slice(0, 250);
+  return mergeTextSearchHits(hits.flat(), criteria);
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {

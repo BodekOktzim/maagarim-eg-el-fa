@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentAgeFromBirthDate, mergeHits, mergePhoneHits, type SearchHit } from "./full-dataset-search";
+import { currentAgeFromBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, textMatchesWithinSource, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -34,6 +34,32 @@ describe("unified AGRON/Elector result merging", () => {
       phoneYear: "2020",
       fatherId: "000000001",
     });
+  });
+
+  it("keeps Elector name matches until the AGRON city is checked on the unified record", () => {
+    const agron = hit({
+      source: "AGRON 2006", sourceKey: "agron2006", firstName: "מיכל", lastName: "כהן",
+      fullName: "מיכל כהן", city: "מטולה", address: "רחוב ישן 14",
+    });
+    const elector = hit({
+      source: "Elector", sourceKey: "elector", firstName: "מיכל", lastName: "כהן",
+      fullName: "מיכל כהן", city: undefined, address: "הסביון 2, מטולה",
+    });
+    const facebook = hit({
+      source: "Facebook", sourceKey: "facebook", firstName: "מיכל", lastName: "כהן",
+      fullName: "מיכל כהן", nationalId: "1402470716", city: undefined,
+    });
+
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", city: "מטולה" })).toBe(true);
+    expect(textMatchesWithinSource(facebook, { lastName: "כהן", city: "מטולה" })).toBe(false);
+    const [merged] = mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "מטולה" });
+    expect(merged).toMatchObject({
+      source: "מאגר מאוחד",
+      address: "הסביון 2, מטולה",
+      addressYear: "2020",
+      city: "מטולה",
+    });
+    expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "חיפה" })).toHaveLength(0);
   });
 
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {
