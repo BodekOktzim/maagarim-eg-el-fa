@@ -121,6 +121,14 @@
   .family-detail-panel { width: min(260px, 70vw); }
 }
 
+@media (max-width: 1023px) {
+  .tree-stage { width: 100%; min-width: 0; }
+  .family-pair-detail-grid { width: 100%; flex-direction: column; align-items: stretch; }
+  .family-pair-detail-grid > .family-node[aria-pressed="true"] { order: 1; width: 100%; }
+  .family-pair-detail-grid > .family-detail-panel { order: 2; width: 100%; max-width: none; }
+  .family-pair-detail-grid > .family-node[aria-pressed="false"] { order: 3; width: 100%; }
+}
+
 @keyframes node-pulse { 0%, 100% { box-shadow: 0 0 28px rgba(255, 75, 145, 0.2); } 50% { box-shadow: 0 0 42px rgba(255, 75, 145, 0.42); } }
 @media (prefers-reduced-motion: reduce) { .family-node-central { animation: none; } }
 @media (min-width: 640px) { .container { padding-left: 1.5rem; padding-right: 1.5rem; } }
