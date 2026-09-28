@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
+import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -128,6 +128,18 @@ describe("unified AGRON/Elector result merging", () => {
     const cityRecord = hit({ city: "מטולה" });
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" })).toBe(false);
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" }, "similar")).toBe(true);
+  });
+
+  it("filters a text candidate by address after indexed name/city search", () => {
+    const person = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", address: "רחוב הרצל 12" });
+    expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הרצל" })).toHaveLength(1);
+    expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הנביאים" })).toHaveLength(0);
+  });
+
+  it("rejects source/field combinations without an existing index", async () => {
+    await expect(searchFullDatasetsByText({ lastName: "כהן", city: "חיפה" }, "exact", "elector")).rejects.toThrow("אינדקס יישוב");
+    await expect(searchFullDatasetsByText({ lastName: "כהן", age: "20-30" }, "exact", "facebook")).rejects.toThrow("אינדקס גיל");
+    await expect(searchFullDatasetsByText({ address: "הרצל" })).rejects.toThrow("מסנן משני");
   });
 
   it("matches inclusive age ranges", () => {
