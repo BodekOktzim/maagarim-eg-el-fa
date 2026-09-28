@@ -571,7 +571,8 @@ export async function searchFullDatasetsById(input: string, sourceFilter: Source
 }
 
 export async function searchFullDatasetsByIdWithDetails(input: string, sourceFilter: SourceFilter = "all"): Promise<SearchHit[]> {
-  return attachFacebookMaritalStatus(await searchFullDatasetsById(input, sourceFilter));
+  const hits = await searchFullDatasetsById(input, sourceFilter);
+  return sourceFilter === "all" ? attachFacebookMaritalStatus(hits) : hits;
 }
 
 function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
