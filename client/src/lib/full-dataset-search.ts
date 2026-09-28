@@ -7,6 +7,7 @@ const RAW_INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-e
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
+export type SourceFilter = "all" | SourceKey;
 
 export type SearchHit = {
   source: string;
@@ -39,6 +40,7 @@ export type TextSearchCriteria = {
   firstName?: string;
   lastName?: string;
   city?: string;
+  address?: string;
   age?: string;
 };
 
@@ -550,23 +552,26 @@ async function searchSourceById(source: IndexSource, normalized: string, blockRe
   return idSourceSearchCache.get(cacheKey)!;
 }
 
-export async function searchFullDatasetsById(input: string): Promise<SearchHit[]> {
+export async function searchFullDatasetsById(input: string, sourceFilter: SourceFilter = "all"): Promise<SearchHit[]> {
   const normalized = normalizeId(input);
-  if (!idSearchCache.has(normalized)) {
-    idSearchCache.set(normalized, (async () => {
+  if (sourceFilter === "facebook") throw new Error("במאגר Facebook אין אינדקס תעודות זהות ישראליות. בחרו חיפוש לפי מזהה Facebook.");
+  const cacheKey = `${sourceFilter}:${normalized}`;
+  if (!idSearchCache.has(cacheKey)) {
+    idSearchCache.set(cacheKey, (async () => {
       const manifest = await getManifest();
       const blockRecords = manifest.blockRecords || 4096;
       // Facebook's numeric key is a Facebook profile ID, not an Israeli national ID.
-      const sources = manifest.sources.filter((source) => source.key !== "facebook");
+      const sources = manifest.sources.filter((source) => source.key !== "facebook" && (sourceFilter === "all" || source.key === sourceFilter));
       const results = await Promise.all(sources.map((source) => searchSourceById(source, normalized, blockRecords)));
-      return mergeHits(results.flat());
+      const hits = results.flat();
+      return sourceFilter === "all" ? mergeHits(hits) : hits;
     })());
   }
-  return idSearchCache.get(normalized)!;
+  return idSearchCache.get(cacheKey)!;
 }
 
-export async function searchFullDatasetsByIdWithDetails(input: string): Promise<SearchHit[]> {
-  return attachFacebookMaritalStatus(await searchFullDatasetsById(input));
+export async function searchFullDatasetsByIdWithDetails(input: string, sourceFilter: SourceFilter = "all"): Promise<SearchHit[]> {
+  return attachFacebookMaritalStatus(await searchFullDatasetsById(input, sourceFilter));
 }
 
 function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
@@ -584,7 +589,7 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
 }
 
 function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
-  for (const field of ["firstName", "lastName", "city"] as const) {
+  for (const field of ["firstName", "lastName", "city", "address"] as const) {
     const term = criteria[field]?.trim();
     if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
   }
@@ -624,7 +629,11 @@ export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCrite
   const merged = mergeHits(eligible.flatMap((group) => group.hits)).slice(0, 250);
   return merged.map((hit) => {
     const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
-    return approximateKeys.has(key) ? { ...hit, confidence: "approximate-text-match" as const } : hit;
+    return {
+      ...hit,
+      ...(hit.sourceKey === "facebook" ? { source: "Facebook (התאמה אפשרית)" } : {}),
+      confidence: hit.sourceKey === "facebook" ? "candidate-id-field" as const : approximateKeys.has(key) ? "approximate-text-match" as const : "text-match" as const,
+    };
   });
 }
 
@@ -693,16 +702,21 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }
 
-export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
-  const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim());
+export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact", sourceFilter: SourceFilter = "all") {
+  const hasIndexedText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim());
+  const hasText = hasIndexedText || Boolean(criteria.address?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
+  if (!hasIndexedText && !age) throw new Error("חיפוש כתובת זמין כמסנן משני בלבד. הוסיפו שם, יישוב או גיל כדי לאתר מועמדים.");
+  if (criteria.city?.trim() && (sourceFilter === "elector" || sourceFilter === "facebook")) throw new Error("אינדקס יישוב קיים כרגע רק במאגר אגרון; בחרו אגרון או הכל.");
+  if (age && sourceFilter !== "all" && sourceFilter !== "agron2006") throw new Error("אינדקס גיל קיים כרגע רק במאגר אגרון; בחרו אגרון או הכל.");
   if (age) parseAgeRange(age);
-  for (const value of [criteria.firstName, criteria.lastName, criteria.city]) {
-    if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
+  for (const value of [criteria.firstName, criteria.lastName, criteria.city, criteria.address]) {
+    if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם, יישוב או כתובת יש להזין לפחות שתי אותיות.");
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
-  const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
+  const sources = manifest.sources.filter((source) => sourceFilter === "all" || source.key === sourceFilter);
+  const hits = await Promise.all(sources.map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
   const allHits = hits.flat();
   return applyFacebookDetails(mergeTextSearchHits(allHits, criteria, matchMode), allHits.filter((hit) => hit.sourceKey === "facebook"));
 }
@@ -759,10 +773,11 @@ async function attachFacebookMaritalStatus(hits: SearchHit[]) {
   return applyFacebookDetails(hits, facebookHits);
 }
 
-export async function searchFullDatasetsByPhone(input: string) {
+export async function searchFullDatasetsByPhone(input: string, sourceFilter: SourceFilter = "all") {
   const phone = normalizedPhone(input);
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
-  const all = await Promise.all(manifest.sources.map(async (source) => {
+  const sources = manifest.sources.filter((source) => sourceFilter === "all" || source.key === sourceFilter);
+  const all = await Promise.all(sources.map(async (source) => {
     const key = source.key === "agron2006" ? "phone-agron" : source.key === "elector" ? "phone-elector" : "phone-facebook-candidate";
     const meta = extensions.indexes[key];
     if (!meta) return [] as SearchHit[];
