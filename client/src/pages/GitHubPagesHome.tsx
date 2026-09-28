@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useState, type FormEvent } from "react";
+import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Monitor, Network, Phone, Search, Smartphone, UserRound, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,6 +23,29 @@ type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 
 type SearchDetailGroup = { title: string; rows: [string, string][] };
+const DISPLAY_MODE_KEY = "osint-search-display-mode";
+const DEFAULT_VIEWPORT = "width=device-width, initial-scale=1.0, maximum-scale=1";
+const DESKTOP_VIEWPORT = "width=1280, initial-scale=0.3, maximum-scale=5, user-scalable=yes";
+
+function readDesktopViewPreference() {
+  try { return localStorage.getItem(DISPLAY_MODE_KEY) === "desktop"; }
+  catch { return false; }
+}
+
+function DisplayModeToggle({ desktopView, onToggle }: { desktopView: boolean; onToggle: () => void }) {
+  const Icon = desktopView ? Smartphone : Monitor;
+  const label = desktopView ? "תצוגת מובייל" : "תצוגת מחשב";
+  return <button
+    type="button"
+    aria-label={label}
+    aria-pressed={desktopView}
+    title={`${label} — החלפה בלי רענון`}
+    onClick={onToggle}
+    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#20102b]/90 px-3 py-2 text-xs font-medium text-white/80 shadow-lg transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-200"
+  >
+    <Icon size={15}/><span>{label}</span>
+  </button>;
+}
 
 function searchHitDetailGroups(hit: SearchHit): SearchDetailGroup[] {
   const personalRows: [string, string][] = [
@@ -69,6 +92,7 @@ async function sha256(value: string) {
 export default function GitHubPagesHome() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(() => readSessionStart());
   const unlocked = sessionStartedAt !== null;
+  const [desktopView, setDesktopView] = useState(readDesktopViewPreference);
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [mode, setMode] = useState<SearchMode>("national-id");
@@ -88,6 +112,21 @@ export default function GitHubPagesHome() {
   const [familyCentralId, setFamilyCentralId] = useState("");
   const [isLoadingFamily, setIsLoadingFamily] = useState(false);
   const [familyError, setFamilyError] = useState("");
+
+  useLayoutEffect(() => {
+    const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!viewport) return;
+    const original = viewport.content || DEFAULT_VIEWPORT;
+    viewport.content = desktopView ? DESKTOP_VIEWPORT : DEFAULT_VIEWPORT;
+    return () => { viewport.content = original; };
+  }, [desktopView]);
+
+  const toggleDesktopView = () => {
+    const next = !desktopView;
+    setDesktopView(next);
+    try { localStorage.setItem(DISPLAY_MODE_KEY, next ? "desktop" : "mobile"); }
+    catch { /* The view switch still works for this session if storage is unavailable. */ }
+  };
 
   const normalizedDigits = useMemo(() => normalizeId(query), [query]);
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
@@ -255,7 +294,7 @@ export default function GitHubPagesHome() {
   if (!unlocked) {
     return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100">
       <main className="w-full max-w-xl space-y-5">
-          <div className="fixed left-4 top-4 z-40"><PwaControls/></div>
+          <div className="fixed left-4 top-4 z-40 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2"><DisplayModeToggle desktopView={desktopView} onToggle={toggleDesktopView}/><PwaControls/></div>
           <div className="rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-fuchsia-300/15 text-fuchsia-200"><LockKeyhole size={26}/></div>
           <h1 className="mt-5 text-center"><span className="bg-gradient-to-r from-fuchsia-200 via-white to-violet-200 bg-clip-text font-serif text-3xl font-bold tracking-[0.12em] text-transparent sm:text-4xl">OSINT Search</span></h1>
@@ -281,7 +320,7 @@ export default function GitHubPagesHome() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-2"><DisplayModeToggle desktopView={desktopView} onToggle={toggleDesktopView}/><PwaControls/><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
       </div>
     </header>
 
