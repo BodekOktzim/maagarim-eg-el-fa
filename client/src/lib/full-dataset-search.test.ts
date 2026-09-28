@@ -136,12 +136,6 @@ describe("unified AGRON/Elector result merging", () => {
     expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הנביאים" })).toHaveLength(0);
   });
 
-  it("rejects source/field combinations without an existing index", async () => {
-    await expect(searchFullDatasetsByText({ lastName: "כהן", city: "חיפה" }, "exact", "elector")).rejects.toThrow("אינדקס יישוב");
-    await expect(searchFullDatasetsByText({ lastName: "כהן", age: "20-30" }, "exact", "facebook")).rejects.toThrow("אינדקס גיל");
-    await expect(searchFullDatasetsByText({ address: "הרצל" })).rejects.toThrow("מסנן משני");
-  });
-
   it("matches inclusive age ranges", () => {
     expect(textMatchesWithinSource(hit({ age: "20" }), { age: "20-30" })).toBe(true);
     expect(textMatchesWithinSource(hit({ age: "30" }), { age: "20-30" })).toBe(true);

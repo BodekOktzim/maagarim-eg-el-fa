@@ -54,7 +54,7 @@ function readSessionStart() {
     return migratedAt;
   }
   const startedAt = raw ? Number(raw) : NaN;
-  if (!Number.isFinite(startedAt) || startedAt <= 0) {
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || Date.now() - startedAt >= AWAY_TTL_MS) {
     sessionStorage.removeItem(SESSION_KEY);
     return null;
   }
@@ -161,20 +161,10 @@ export default function GitHubPagesHome() {
 
   useEffect(() => {
     if (sessionStartedAt === null) return;
-    let awaySince: number | null = null;
-    const markAway = () => { if (awaySince === null) awaySince = Date.now(); };
-    const checkReturn = () => {
-      if (awaySince !== null && Date.now() - awaySince >= AWAY_TTL_MS) lock();
-      awaySince = null;
-    };
-    const onVisibilityChange = () => { if (document.visibilityState === "hidden") markAway(); else checkReturn(); };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("blur", markAway);
-    window.addEventListener("focus", checkReturn);
+    const remaining = Math.max(0, AWAY_TTL_MS - (Date.now() - sessionStartedAt));
+    const timeout = window.setTimeout(lock, remaining);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("blur", markAway);
-      window.removeEventListener("focus", checkReturn);
+      window.clearTimeout(timeout);
     };
   }, [sessionStartedAt]);
 
