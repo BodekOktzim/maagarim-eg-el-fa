@@ -669,17 +669,10 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
   }
   if (!candidates.length) return [] as SearchHit[];
-  const selectedCandidates = matchMode === "similar"
-    ? (["firstName", "lastName", "city", "age"] as const).flatMap((field) => candidates
-      .filter((candidate) => candidate.field === field)
-      .sort((left, right) => left.count - right.count)
-      .slice(0, field === "age" ? 120 : 4))
-    : (() => {
-      const ageCandidates = candidates.filter((candidate) => candidate.field === "age");
-      const otherCandidates = candidates.filter((candidate) => candidate.field !== "age");
-      const bestOther = otherCandidates.length ? [otherCandidates.reduce((best, candidate) => candidate.count < best.count ? candidate : best)] : [];
-      return [...bestOther, ...ageCandidates];
-    })();
+  const selectedCandidates = (["firstName", "lastName", "city", "age"] as const).flatMap((field) => candidates
+    .filter((candidate) => candidate.field === field)
+    .sort((left, right) => left.count - right.count)
+    .slice(0, matchMode === "similar" ? (field === "age" ? 120 : 4) : (field === "age" ? 120 : 1)));
   const pointerScores = new Map<number, { pointer: RowPointer; score: number; order: number }>();
   const postingGroups = await Promise.all(selectedCandidates.map((candidate) =>
     readPostingGroup(candidate.meta, candidate.key, matchMode === "similar" ? 10_000 : 300_000, true)));
