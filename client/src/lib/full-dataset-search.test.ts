@@ -136,6 +136,13 @@ describe("unified AGRON/Elector result merging", () => {
     expect(textMatchesWithinSource(hit({ age: "31" }), { age: "20-30" })).toBe(false);
   });
 
+  it("matches free-text address and keeps it as an additional exact criterion", () => {
+    const person = hit({ firstName: "ישראל", lastName: "ביטון", city: "רמת גן", address: "דולצין 20 שכונת הבורסה רמת גן" });
+    expect(textMatchesWithinSource(person, { address: "דולצין 20" })).toBe(true);
+    expect(textMatchesWithinSource(person, { lastName: "ביטון", address: "רמת גן" })).toBe(true);
+    expect(textMatchesWithinSource(person, { address: "חיפה" })).toBe(false);
+  });
+
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {
     const [merged] = mergeHits([
       hit({ source: "AGRON 2006", fatherId: "000000001", motherId: "000000002" }),

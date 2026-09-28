@@ -75,7 +75,7 @@ def write_post(out, key: int, offset: int, length: int) -> None:
 
 def build_agron(indexes: dict[str, object]) -> None:
     source = DATA / "AGRON2006.txt"
-    paths = {key: OUT / f"{key}.bin" for key in ("text-agron-first", "text-agron-last", "text-agron-city", "phone-agron", "age-agron")}
+    paths = {key: OUT / f"{key}.bin" for key in ("text-agron-first", "text-agron-last", "text-agron-city", "text-agron-address", "phone-agron", "age-agron")}
     counts = {key: 0 for key in paths}
     parent_path = OUT / "family-agron-parent-child.bin"
     edge_count = 0
@@ -100,6 +100,7 @@ def build_agron(indexes: dict[str, object]) -> None:
                 "text-agron-first": values[1],
                 "text-agron-last": values[2],
                 "text-agron-city": values[11],
+                "text-agron-address": " ".join(part for part in (values[7], values[8], values[9], values[10], values[11]) if part),
             }
             for key, text in field_values.items():
                 for gram in bigrams(text):
@@ -128,7 +129,7 @@ def build_agron(indexes: dict[str, object]) -> None:
 
 def build_elector(indexes: dict[str, object]) -> None:
     source = DATA / "Elector.txt"
-    paths = {key: OUT / f"{key}.bin" for key in ("text-elector-first", "text-elector-last", "phone-elector")}
+    paths = {key: OUT / f"{key}.bin" for key in ("text-elector-first", "text-elector-last", "text-elector-address", "phone-elector")}
     counts = {key: 0 for key in paths}
     with source.open("rb") as src, ExitStack() as stack:
         outputs = {k: stack.enter_context(p.open("wb")) for k, p in paths.items()}
@@ -144,7 +145,7 @@ def build_elector(indexes: dict[str, object]) -> None:
                 continue
             if len(row) < 6:
                 continue
-            for key, text in (("text-elector-first", row[1]), ("text-elector-last", row[2])):
+            for key, text in (("text-elector-first", row[1]), ("text-elector-last", row[2]), ("text-elector-address", " ".join(part for part in row[5:8] if part))):
                 for gram in bigrams(text):
                     write_post(outputs[key], hash32(gram), row_offset, len(line))
                     counts[key] += 1

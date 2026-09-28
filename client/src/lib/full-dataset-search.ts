@@ -8,6 +8,8 @@ const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
 
+export type SourceFilter = "all" | SourceKey;
+
 export type SearchHit = {
   source: string;
   sourceKey: SourceKey;
@@ -39,6 +41,7 @@ export type TextSearchCriteria = {
   firstName?: string;
   lastName?: string;
   city?: string;
+  address?: string;
   age?: string;
 };
 
@@ -118,6 +121,9 @@ type ExtensionIndex = {
   sparseFile: string;
   sparseBytes: number;
   blockRecords: number;
+  indexFiles?: string[];
+  sparseFiles?: string[];
+  indexBytesByFile?: number[];
 };
 
 type ExtensionManifest = {
@@ -282,8 +288,8 @@ async function getSparse(file: string) {
   return sparseCache.get(url)!;
 }
 
-async function findSparseRange(meta: ExtensionIndex, target: number | bigint, keyBytes = 4, recordBytes = 16) {
-  const buffer = await getSparse(meta.sparseFile);
+async function findSparseRange(meta: ExtensionIndex, target: number | bigint, keyBytes = 4, recordBytes = 16, sparseFile = meta.sparseFile, indexBytes = meta.indexBytes) {
+  const buffer = await getSparse(sparseFile);
   const sparseRecordBytes = keyBytes === 8 ? 16 : 12;
   if (buffer.byteLength % sparseRecordBytes) throw new Error(`קובץ אינדקס עזר פגום: ${meta.sparseFile}.`);
   const view = new DataView(buffer);
@@ -302,26 +308,35 @@ async function findSparseRange(meta: ExtensionIndex, target: number | bigint, ke
   const startOrdinal = firstAtOrAfter === 0 ? 0 : read(view, firstAtOrAfter - 1).ordinal;
   let firstGreater = firstAtOrAfter;
   while (firstGreater < count && BigInt(read(view, firstGreater).key) <= targetBig) firstGreater += 1;
-  const totalRecords = meta.indexBytes / recordBytes;
+  const totalRecords = indexBytes / recordBytes;
   const endOrdinal = firstGreater < count ? read(view, firstGreater).ordinal : totalRecords;
   return { startOrdinal, endOrdinal, totalRecords };
 }
 
 async function readPostingGroup(meta: ExtensionIndex, key: number, cap: number, allowPartial = false) {
-  const range = await findSparseRange(meta, key, 4, 16);
-  const count = range.endOrdinal - range.startOrdinal;
-  if (count <= 0) return { count: 0, records: [] as RowPointer[] };
-  if (count > cap && !allowPartial) throw new Error("נמצאו יותר מדי מועמדים לפי מפתח זה. הוסיפו שם משפחה, יישוב או גיל כדי לצמצם את החיפוש.");
-  const sampledEnd = allowPartial ? Math.min(range.endOrdinal, range.startOrdinal + cap) : range.endOrdinal;
-  const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${meta.indexFile}`, range.startOrdinal * 16, sampledEnd * 16 - 1, meta.indexFile);
-  if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${meta.indexFile}.`);
-  const view = new DataView(buffer);
+  const files = meta.indexFiles ?? [meta.indexFile];
+  const sparseFiles = meta.sparseFiles ?? [meta.sparseFile];
+  const bytes = meta.indexBytesByFile ?? [meta.indexBytes];
   const records: RowPointer[] = [];
-  for (let byte = 0; byte < buffer.byteLength; byte += 16) {
-    if (view.getUint32(byte, true) !== key) continue;
-    records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+  let totalCount = 0;
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+    const file = files[fileIndex];
+    const range = await findSparseRange(meta, key, 4, 16, sparseFiles[fileIndex], bytes[fileIndex]);
+    const count = range.endOrdinal - range.startOrdinal;
+    if (count <= 0) continue;
+    if (totalCount + count > cap && !allowPartial) throw new Error("נמצאו יותר מדי מועמדים לפי מפתח זה. הוסיפו שם משפחה, יישוב או גיל כדי לצמצם את החיפוש.");
+    const sampledEnd = allowPartial ? Math.min(range.endOrdinal, range.startOrdinal + cap - totalCount) : range.endOrdinal;
+    const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${file}`, range.startOrdinal * 16, sampledEnd * 16 - 1, file);
+    if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${file}.`);
+    const view = new DataView(buffer);
+    for (let byte = 0; byte < buffer.byteLength; byte += 16) {
+      if (view.getUint32(byte, true) !== key) continue;
+      records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+    }
+    totalCount += count;
+    if (allowPartial && totalCount >= cap) break;
   }
-  return { count: records.length, records };
+  return { count: totalCount, records };
 }
 
 async function readFacebookIdGroup(meta: ExtensionIndex, target: bigint, cap: number) {
@@ -444,7 +459,7 @@ function parseHit(source: IndexSource, line: string, target = "") : SearchHit | 
     return {
       source: "Elector", sourceKey: source.key, confidence: "exact-id", nationalId: displayId(fields[3]) ?? target,
       firstName, lastName, fullName: [firstName, lastName].filter(Boolean).join(" ") || "ללא שם בקובץ",
-      phone: fields[4] || undefined, address: fields[5] || undefined, cityCode: fields[9] || undefined,
+      phone: fields[4] || undefined, address: fields.slice(5, 8).filter(Boolean).join(", ") || undefined, cityCode: fields[9] || undefined,
     };
   }
   return parseFacebookHit(line, target);
@@ -550,23 +565,25 @@ async function searchSourceById(source: IndexSource, normalized: string, blockRe
   return idSourceSearchCache.get(cacheKey)!;
 }
 
-export async function searchFullDatasetsById(input: string): Promise<SearchHit[]> {
+export async function searchFullDatasetsById(input: string, sourceFilter: SourceFilter = "all"): Promise<SearchHit[]> {
   const normalized = normalizeId(input);
-  if (!idSearchCache.has(normalized)) {
-    idSearchCache.set(normalized, (async () => {
+  const cacheKey = `${sourceFilter}:${normalized}`;
+  if (!idSearchCache.has(cacheKey)) {
+    idSearchCache.set(cacheKey, (async () => {
       const manifest = await getManifest();
       const blockRecords = manifest.blockRecords || 4096;
       // Facebook's numeric key is a Facebook profile ID, not an Israeli national ID.
-      const sources = manifest.sources.filter((source) => source.key !== "facebook");
+      const sources = manifest.sources.filter((source) => source.key !== "facebook" && (sourceFilter === "all" || source.key === sourceFilter));
       const results = await Promise.all(sources.map((source) => searchSourceById(source, normalized, blockRecords)));
       return mergeHits(results.flat());
     })());
   }
-  return idSearchCache.get(normalized)!;
+  return idSearchCache.get(cacheKey)!;
 }
 
-export async function searchFullDatasetsByIdWithDetails(input: string): Promise<SearchHit[]> {
-  return attachFacebookMaritalStatus(await searchFullDatasetsById(input));
+export async function searchFullDatasetsByIdWithDetails(input: string, sourceFilter: SourceFilter = "all"): Promise<SearchHit[]> {
+  const hits = await searchFullDatasetsById(input, sourceFilter);
+  return sourceFilter === "all" ? attachFacebookMaritalStatus(hits) : hits;
 }
 
 function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
@@ -580,11 +597,15 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
     output.push({ indexKey, field: "lastName", value: criteria.lastName.trim() });
   }
   if (criteria.city?.trim() && sourceKey === "agron2006") output.push({ indexKey: "text-agron-city", field: "city", value: criteria.city.trim() });
+  if (criteria.address?.trim()) {
+    const indexKey = sourceKey === "agron2006" ? "text-agron-address" : sourceKey === "elector" ? "text-elector-address" : "";
+    if (indexKey) output.push({ indexKey, field: "address", value: criteria.address.trim() });
+  }
   return output;
 }
 
 function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
-  for (const field of ["firstName", "lastName", "city"] as const) {
+  for (const field of ["firstName", "lastName", "city", "address"] as const) {
     const term = criteria[field]?.trim();
     if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
   }
@@ -643,6 +664,7 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
 
 async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
+  if (criteria.address && source.key === "facebook") return [] as SearchHit[];
   const ageRange = parseAgeRange(criteria.age);
   const criteriaItems = criteriaForSource(criteria, source.key);
   const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof SearchHit; count: number }[] = [];
@@ -693,18 +715,18 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }
 
-export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
-  const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim());
+export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact", sourceFilter: SourceFilter = "all") {
+  const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim() || criteria.address?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
   if (age) parseAgeRange(age);
-  for (const value of [criteria.firstName, criteria.lastName, criteria.city]) {
+  for (const value of [criteria.firstName, criteria.lastName, criteria.city, criteria.address]) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
-  const hits = await Promise.all(manifest.sources.map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
+  const hits = await Promise.all(manifest.sources.filter((source) => sourceFilter === "all" || source.key === sourceFilter).map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
   const allHits = hits.flat();
-  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria, matchMode), allHits.filter((hit) => hit.sourceKey === "facebook"));
+  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria, matchMode), sourceFilter === "all" ? allHits.filter((hit) => hit.sourceKey === "facebook") : []);
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {
@@ -759,10 +781,10 @@ async function attachFacebookMaritalStatus(hits: SearchHit[]) {
   return applyFacebookDetails(hits, facebookHits);
 }
 
-export async function searchFullDatasetsByPhone(input: string) {
+export async function searchFullDatasetsByPhone(input: string, sourceFilter: SourceFilter = "all") {
   const phone = normalizedPhone(input);
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
-  const all = await Promise.all(manifest.sources.map(async (source) => {
+  const all = await Promise.all(manifest.sources.filter((source) => sourceFilter === "all" || source.key === sourceFilter).map(async (source) => {
     const key = source.key === "agron2006" ? "phone-agron" : source.key === "elector" ? "phone-elector" : "phone-facebook-candidate";
     const meta = extensions.indexes[key];
     if (!meta) return [] as SearchHit[];
@@ -774,7 +796,8 @@ export async function searchFullDatasetsByPhone(input: string) {
   return mergePhoneHits(all.flat());
 }
 
-export async function searchFullDatasetsByFacebookId(input: string) {
+export async function searchFullDatasetsByFacebookId(input: string, sourceFilter: SourceFilter = "all") {
+  if (sourceFilter !== "all" && sourceFilter !== "facebook") return [];
   const digits = digitsOnly(input);
   if (!/^\d{1,18}$/.test(digits)) throw new Error("יש להזין מזהה Facebook מספרי בן 1–18 ספרות.");
   const target = BigInt(digits);

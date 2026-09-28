@@ -150,6 +150,52 @@
       "sparseFile": "facebook-id.sparse.bin",
       "sparseBytes": 15456,
       "blockRecords": 4096
+    },
+    "text-agron-address": {
+      "records": 135914660,
+      "indexFile": "text-agron-address-0.bin",
+      "kind": "postings",
+      "indexBytes": 2174634560,
+      "sparseFile": "text-agron-address-0.sparse.bin",
+      "sparseBytes": 398196,
+      "blockRecords": 4096,
+      "source": "AGRON 2006",
+      "dataFile": "AGRON2006.txt",
+      "indexFiles": [
+        "text-agron-address-0.bin",
+        "text-agron-address-1.bin"
+      ],
+      "indexBytesByFile": [
+        1900000000,
+        274634560
+      ],
+      "sparseFiles": [
+        "text-agron-address-0.sparse.bin",
+        "text-agron-address-1.sparse.bin"
+      ]
+    },
+    "text-elector-address": {
+      "records": 127723524,
+      "indexFile": "text-elector-address-0.bin",
+      "kind": "postings",
+      "indexBytes": 2043576384,
+      "sparseFile": "text-elector-address-0.sparse.bin",
+      "sparseBytes": 374196,
+      "blockRecords": 4096,
+      "source": "Elector",
+      "dataFile": "Elector.txt",
+      "indexFiles": [
+        "text-elector-address-0.bin",
+        "text-elector-address-1.bin"
+      ],
+      "indexBytesByFile": [
+        1900000000,
+        143576384
+      ],
+      "sparseFiles": [
+        "text-elector-address-0.sparse.bin",
+        "text-elector-address-1.sparse.bin"
+      ]
     }
   }
 }

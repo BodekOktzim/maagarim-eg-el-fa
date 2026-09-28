@@ -1,17 +1,17 @@
 {
-  "buildId": "41a94f8ce07ba51d8bc86640e861c0209b9bc0e3",
-  "version": "41a94f8",
-  "builtAt": "2026-09-28T00:33:40.367Z",
-  "appBytes": 1669316,
-  "downloadBytes": 606884,
+  "buildId": "1ca8e51cc37d228b6ab25afe8e69f07111870a9f",
+  "version": "1ca8e51",
+  "builtAt": "2026-09-28T23:19:57.146Z",
+  "appBytes": 1673947,
+  "downloadBytes": 607509,
   "resources": [
     {
-      "url": "/maagarim-eg-el-fa/assets/index-CjBMqnjI.js",
-      "bytes": 539849
+      "url": "/maagarim-eg-el-fa/assets/index-CmVNO3Ff.js",
+      "bytes": 541879
     },
     {
-      "url": "/maagarim-eg-el-fa/assets/index-xBi-Ih_H.css",
-      "bytes": 146059
+      "url": "/maagarim-eg-el-fa/assets/index-D4ZyRlt6.css",
+      "bytes": 146503
     },
     {
       "url": "/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js",
@@ -19,7 +19,7 @@
     },
     {
       "url": "/maagarim-eg-el-fa/index-seek/offline-data-manifest.json",
-      "bytes": 11196
+      "bytes": 13353
     },
     {
       "url": "/maagarim-eg-el-fa/index.html",
