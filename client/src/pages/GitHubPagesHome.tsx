@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
   searchFamilyTreeById,
-  searchFullDatasetsByIdWithDetails,
-  searchFullDatasetsByFacebookId,
-  searchFullDatasetsByPhone,
-  searchFullDatasetsByText,
-  parseAgeRange,
+  classifyUnifiedQuery,
+  searchUnifiedQuery,
   type SourceFilter,
   type FamilyTreeData,
   type SearchHit,
@@ -20,8 +17,13 @@ import {
 const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
 const SESSION_KEY = `maagarim-pages-unlocked-${import.meta.env.VITE_BUILD_ID ?? "dev"}`;
 const AWAY_TTL_MS = 30 * 60 * 1000;
-type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
+const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
+  { id: "all", label: "הכול" },
+  { id: "agron2006", label: "אגרון" },
+  { id: "elector", label: "אלקטור" },
+  { id: "facebook", label: "Facebook" },
+];
 
 type SearchDetailGroup = { title: string; rows: [string, string][] };
 
@@ -72,10 +74,8 @@ export default function GitHubPagesHome() {
   const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const [mode, setMode] = useState<SearchMode>("national-id");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [query, setQuery] = useState("");
-  const [criteria, setCriteria] = useState({ firstName: "", lastName: "", city: "", address: "", age: "" });
   const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -91,7 +91,7 @@ export default function GitHubPagesHome() {
   const [isLoadingFamily, setIsLoadingFamily] = useState(false);
   const [familyError, setFamilyError] = useState("");
 
-  const normalizedDigits = useMemo(() => normalizeId(query), [query]);
+  const queryKind = classifyUnifiedQuery(query, sourceFilter);
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
   const exportSearchResults = async () => {
     if (!results.length || isExporting) return;
@@ -168,10 +168,8 @@ export default function GitHubPagesHome() {
     };
   }, [sessionStartedAt]);
 
-  const switchMode = (next: SearchMode) => {
-    setMode(next);
-    setQuery("");
-    setCriteria({ firstName: "", lastName: "", city: "", address: "", age: "" });
+  const selectSource = (next: SourceFilter) => {
+    setSourceFilter(next);
     setResults([]);
     setSearchError("");
     setSearched(false);
@@ -187,24 +185,12 @@ export default function GitHubPagesHome() {
     clearTree();
     setIsSearching(true);
     try {
-      if (mode === "national-id") {
-        if (normalizedDigits.length < 5 || normalizedDigits.length > 9) throw new Error("יש להזין מספר תעודת זהות בן 5–9 ספרות.");
-        setLastQuery(`ת״ז ${normalizedDigits}`);
-        setResults(await searchFullDatasetsByIdWithDetails(normalizedDigits, sourceFilter));
-      } else if (mode === "phone") {
-        if (query.replace(/\D/g, "").length < 7) throw new Error("יש להזין מספר טלפון בן 7 ספרות לפחות.");
-        setLastQuery(`טלפון ${query.trim()}`);
-        setResults(await searchFullDatasetsByPhone(query, sourceFilter));
-      } else if (mode === "facebook-id") {
-        setLastQuery(`Facebook ID ${query.trim()}`);
-        setResults(await searchFullDatasetsByFacebookId(query, sourceFilter));
-      } else {
-        const searchCriteria = Object.fromEntries(Object.entries(criteria).map(([key, value]) => [key, value.trim()])) as typeof criteria;
-        if (!Object.values(searchCriteria).some(Boolean)) throw new Error("יש למלא לפחות שדה אחד: שם פרטי, שם משפחה, כתובת, יישוב או גיל.");
-        if (searchCriteria.age) parseAgeRange(searchCriteria.age);
-        setLastQuery([...([searchCriteria.firstName, searchCriteria.lastName, searchCriteria.address, searchCriteria.city, searchCriteria.age && `גיל ${searchCriteria.age}`].filter(Boolean)), textMatchMode === "exact" ? "מדויק" : "דומה"].join(" · "));
-        setResults(await searchFullDatasetsByText(searchCriteria, textMatchMode, sourceFilter));
-      }
+      const cleanedQuery = query.trim();
+      const kind = classifyUnifiedQuery(cleanedQuery, sourceFilter);
+      const sourceLabel = SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול";
+      const modeLabel = kind === "text" ? ` · ${textMatchMode === "exact" ? "מדויק" : "דומה"}` : "";
+      setLastQuery(`${sourceLabel} · ${cleanedQuery}${modeLabel}`);
+      setResults(await searchUnifiedQuery(cleanedQuery, sourceFilter, textMatchMode));
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
@@ -262,19 +248,6 @@ export default function GitHubPagesHome() {
     </div>;
   }
 
-  const modes: { id: SearchMode; label: string; icon: typeof Search }[] = [
-    { id: "national-id", label: "תעודת זהות", icon: UserRound },
-    { id: "phone", label: "טלפון", icon: Phone },
-    { id: "facebook-id", label: "מזהה Facebook", icon: Network },
-    { id: "details", label: "שם · יישוב · גיל", icon: Search },
-  ];
-  const sourceOptions: { id: SourceFilter; label: string }[] = [
-    { id: "all", label: "הכול" },
-    { id: "agron2006", label: "אגרון" },
-    { id: "elector", label: "אלקטור" },
-    { id: "facebook", label: "Facebook" },
-  ];
-
   return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
@@ -287,62 +260,43 @@ export default function GitHubPagesHome() {
       <section className="search-hero overflow-hidden rounded-[28px] border border-fuchsia-200/10 bg-[#20102b] px-5 py-6 shadow-[0_24px_80px_rgba(46,24,61,0.3)] sm:px-9 sm:py-9">
         <div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">חיפוש בשלושת מקורות הנתונים</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">חיפוש אדם</h1></div><div className="hidden rounded-2xl border border-fuchsia-100/10 bg-black/10 px-4 py-3 text-xs text-white/45 sm:block"><UsersRound size={15} className="ml-2 inline text-fuchsia-200"/>19.6 מיליון רשומות במקורות</div></div>
 
-        <div className="mt-6 rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="בחירת מקורות נתונים">
-          <p className="mb-2 text-xs font-semibold text-white/60">חיפוש במקורות</p>
-          <div className="flex flex-wrap gap-2">
-            {sourceOptions.map(({ id, label }) => <button key={id} type="button" aria-pressed={sourceFilter === id} onClick={() => setSourceFilter(id)} className={`min-h-9 rounded-lg border px-3 text-xs font-semibold transition ${sourceFilter === id ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/65 hover:bg-white/10"}`}>{label}</button>)}
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="מצב חיפוש">
-          {modes.map(({ id, label, icon: Icon }) => <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => switchMode(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${mode === id ? "border-[#f2a9d2]/50 bg-[#f2a9d2] text-[#30123e]" : "border-white/10 bg-white/[0.035] text-white/70 hover:bg-white/10"}`}><Icon size={16}/>{label}</button>)}
-        </div>
-
-        <form onSubmit={runSearch} className="mt-5 space-y-4">
-          {mode === "national-id" && <div className="flex flex-col gap-3 sm:flex-row">
-            <input inputMode="numeric" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="תעודת זהות — 5 עד 9 ספרות" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            <button type="submit" disabled={isSearching || normalizedDigits.length < 5 || normalizedDigits.length > 9} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש בכל המאגרים</>}</button>
-          </div>}
-          {mode === "phone" && <div className="flex flex-col gap-3 sm:flex-row">
-            <input type="tel" inputMode="tel" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="מספר טלפון — אפשר עם קידומת" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            <button type="submit" disabled={isSearching || query.replace(/\D/g, "").length < 7} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש טלפון</>}</button>
-          </div>}
-          {mode === "facebook-id" && <div className="flex flex-col gap-3 sm:flex-row">
-            <input inputMode="numeric" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="מזהה Facebook מספרי" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            <button type="submit" disabled={isSearching || !/^\d{1,18}$/.test(query.replace(/\D/g, ""))} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש מזהה</>}</button>
-          </div>}
-          {mode === "details" && <>
-            <section className="rounded-2xl border border-white/10 bg-black/10 p-3 sm:col-span-2 lg:col-span-4" aria-label="מצב התאמת החיפוש">
-              <p className="mb-2 text-xs font-semibold text-white/75">איך להתאים את החיפוש?</p>
-              <div className="grid max-w-[420px] grid-cols-2 gap-3">
-                <div className="flex flex-col items-stretch gap-1.5">
-                  <Popover>
-                    <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
-                    <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש מדויק</p><p className="mt-1">מחפש לפי האותיות שהקלדת ובאותו סדר. לדוגמה, „כהו” לא יחזיר את „כהן”. מתאים כשחשוב לצמצם תוצאות.</p></PopoverContent>
-                  </Popover>
-                  <button type="button" aria-pressed={textMatchMode === "exact"} onClick={() => setTextMatchMode("exact")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "exact" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>מדויק</button>
-                </div>
-                <div className="flex flex-col items-stretch gap-1.5">
-                  <Popover>
-                    <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
-                    <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש דומה</p><p className="mt-1">מחפש גם כשיש טעות של אות אחת בשם או ביישוב. לדוגמה, „כהו” עשוי למצוא את „כהן”. הגיל, אם צוין, עדיין חייב להתאים בדיוק; ייתכנו תוצאות נוספות.</p></PopoverContent>
-                  </Popover>
-                  <button type="button" aria-pressed={textMatchMode === "similar"} onClick={() => setTextMatchMode("similar")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "similar" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>דומה</button>
-                </div>
-              </div>
-            </section>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <input autoComplete="off" value={criteria.firstName} onChange={(event) => setCriteria((prev) => ({ ...prev, firstName: event.target.value }))} placeholder="שם פרטי" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-              <input autoComplete="off" value={criteria.lastName} onChange={(event) => setCriteria((prev) => ({ ...prev, lastName: event.target.value }))} placeholder="שם משפחה" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-              <input autoComplete="off" value={criteria.city} onChange={(event) => setCriteria((prev) => ({ ...prev, city: event.target.value }))} placeholder="יישוב" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-              <input autoComplete="off" value={criteria.address} onChange={(event) => setCriteria((prev) => ({ ...prev, address: event.target.value }))} placeholder="כתובת או שכונה" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 lg:col-span-2"/>
-              <input type="text" inputMode="numeric" autoComplete="off" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל או טווח, למשל 20-30" aria-label="גיל או טווח גילאים" className="h-12 min-w-0 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400"/>
-              <button type="submit" disabled={isSearching} className="h-12 rounded-xl bg-[#f2a9d2] px-6 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50 sm:col-span-2 lg:col-span-5">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חיפוש לפי פרטים</>}</button>
+        <form onSubmit={runSearch} className="mt-5 space-y-4" aria-label="חיפוש אחיד">
+          <div className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="בחירת מקור החיפוש">
+            <p className="mb-2 text-xs font-semibold text-white/60">בחר מקור לחיפוש</p>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {SOURCE_OPTIONS.map(({ id, label }) => <button key={id} type="button" aria-pressed={sourceFilter === id} onClick={() => selectSource(id)} className={`min-h-10 rounded-xl border px-4 text-sm font-semibold transition ${sourceFilter === id ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/65 hover:bg-white/10"}`}>{label}</button>)}
             </div>
-          </>}
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <label htmlFor="unified-search-query" className="sr-only">שם, מזהה, טלפון, יישוב, כתובת או גיל</label>
+            <input id="unified-search-query" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={sourceFilter === "facebook" ? "שם, טלפון או מזהה Facebook" : "שם, תעודת זהות, טלפון, יישוב, כתובת או גיל"} aria-describedby="unified-search-hint" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            <button type="submit" disabled={isSearching || !query.trim()} className="h-14 shrink-0 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש ב־{SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול"}</>}</button>
+          </div>
+          <p id="unified-search-hint" className="text-xs leading-relaxed text-white/45">הקלד פרט אחד: שם מלא/חלקי, תעודת זהות, טלפון, יישוב, כתובת או גיל. סוג הערך מזוהה אוטומטית; כל החיפוש נעשה במקור שבחרת.</p>
+
+          {query.trim() && queryKind === "text" && <section className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="מצב התאמת טקסט">
+            <p className="mb-2 text-xs font-semibold text-white/75">התאמת שם או טקסט</p>
+            <div className="grid max-w-[360px] grid-cols-2 gap-3">
+              <div className="flex flex-col items-stretch gap-1.5">
+                <Popover>
+                  <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
+                  <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש מדויק</p><p className="mt-1">מחפש לפי האותיות שהקלדת ובאותו סדר. למשל „כהו” לא יחזיר „כהן”.</p></PopoverContent>
+                </Popover>
+                <button type="button" aria-pressed={textMatchMode === "exact"} onClick={() => setTextMatchMode("exact")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "exact" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>מדויק</button>
+              </div>
+              <div className="flex flex-col items-stretch gap-1.5">
+                <Popover>
+                  <PopoverTrigger asChild><button type="button" className="inline-flex min-h-8 items-center justify-center gap-1 text-xs text-white/60 underline decoration-dotted underline-offset-4 hover:text-white"><Info size={13}/>הסבר</button></PopoverTrigger>
+                  <PopoverContent dir="rtl" side="top" className="w-64 max-w-[calc(100vw-2rem)] border-white/15 bg-[#211528] text-right text-xs leading-relaxed text-white/85"><p className="font-semibold text-fuchsia-100">חיפוש דומה</p><p className="mt-1">מחפש גם כשיש טעות של אות אחת בשם או ביישוב. למשל „כהו” עשוי למצוא „כהן”; ייתכנו יותר תוצאות.</p></PopoverContent>
+                </Popover>
+                <button type="button" aria-pressed={textMatchMode === "similar"} onClick={() => setTextMatchMode("similar")} className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${textMatchMode === "similar" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 bg-white/[0.035] text-white/75 hover:bg-white/10"}`}>דומה</button>
+              </div>
+            </div>
+          </section>}
         </form>
         {searchError && <p role="alert" className="mt-3 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{searchError}</p>}
-        <div className="mt-4 text-xs text-white/45">התוצאות מאוחדות לרשומה אחת; פרטי כתובת וטלפון מוצגים לפי השנה הזמינה.</div>
+        <div className="mt-4 text-xs text-white/45">„הכול” מחפש בכל המקורות ומאחד רשומות; בחירת מקור אחר מגבילה את החיפוש אליו בלבד.</div>
       </section>
 
       {isSearching && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">החיפוש מתבצע…</p><p className="mt-1 text-sm text-white/50">נבדקים האינדקסים המלאים של המקורות ונשלפות רק שורות מתאימות.</p></div></section>}
@@ -350,7 +304,7 @@ export default function GitHubPagesHome() {
       {searched && !isSearching && <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>{results.length > 0 && <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="search-export-format">סוג קובץ לייצוא</label><select id="search-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as SearchExportFormat)} className="min-h-10 rounded-xl border border-white/15 bg-[#17101f] px-3 text-xs text-white"><option value="csv">CSV — Excel / Sheets</option><option value="tsv">TSV — טבלה</option><option value="json">JSON — נתונים</option><option value="jsonl">JSONL — שורה לרשומה</option><option value="txt">TXT — טקסט</option><option value="html">HTML — דף טבלה</option><option value="xml">XML — נתונים</option><option value="xlsx">XLSX — Excel</option></select><button type="button" onClick={() => void exportSearchResults()} disabled={isExporting} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#f2a9d2] px-4 text-xs font-semibold text-[#30123e] hover:bg-[#f7c2e0] disabled:opacity-60">{isExporting ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}ייצא</button></div>}{results.length > 0 && <p className="w-full text-xs text-white/40">הקובץ עשוי לכלול מידע אישי — שמרו אותו במקום מוגן.</p>}{exportError && <p role="alert" className="w-full text-xs text-rose-200">{exportError}</p>}</div>
         {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div>{mode === "phone" && <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">{hit.sourceKey === "facebook" ? "תוצאות Facebook" : "תוצאות מאוחדות — AGRON + Elector"}</p>}<h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">מקור: {hit.sourceNames?.join(" · ") || hit.source}</p><h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
           {(hit.fatherId || hit.motherId || hit.spouseId) && <div className="mt-4 border-t border-white/10 pt-3"><p className="mb-2 text-xs text-white/45">מזהים קשורים הרשומים במקור:</p><div className="flex flex-wrap gap-2">{hit.fatherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אב · {hit.fatherId}</span>}{hit.motherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אם · {hit.motherId}</span>}{hit.spouseId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">בן/בת זוג · {hit.spouseId}</span>}</div></div>}
           {hit.nationalId && <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void openFamily(hit)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button><button type="button" onClick={() => void exportPersonWithFamily(hit)} disabled={Boolean(exportingFamilyId)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60">{exportingFamilyId === normalizeId(hit.nationalId) ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}הורד אדם + עץ משפחה</button></div>}

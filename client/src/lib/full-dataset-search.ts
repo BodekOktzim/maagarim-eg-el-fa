@@ -10,6 +10,8 @@ type SourceKey = "agron2006" | "elector" | "facebook";
 
 export type SourceFilter = "all" | SourceKey;
 
+export type UnifiedQueryKind = "national-id" | "phone" | "facebook-id" | "age" | "text";
+
 export type SearchHit = {
   source: string;
   sourceKey: SourceKey;
@@ -161,6 +163,33 @@ function normalizedPhone(value: string) {
   else if (digits.startsWith("972")) digits = `0${digits.slice(3)}`;
   if (digits.length < 7 || digits.length > 15) throw new Error("יש להזין מספר טלפון תקין, כולל קידומת אם נדרשת.");
   return digits;
+}
+
+export function classifyUnifiedQuery(input: string, sourceFilter: SourceFilter): UnifiedQueryKind {
+  const value = input.trim();
+  if (!value) return "text";
+  if (/^(?:טלפון|phone)\s*[:#]?\s*/i.test(value)) return "phone";
+  if (/^(?:fb|facebook|פייסבוק)(?:[\s-]*id)?[\s-]*[:#]?\s*\d{1,18}$/i.test(value)) return "facebook-id";
+  if (/^(?:ת[.״׳"']?ז\.?|תעודת\s*זהות|id)\s*[:#]?\s*\d{5,9}$/i.test(value)) return "national-id";
+  if (/^גיל\s*\d{1,3}(?:\s*[-–—]\s*\d{1,3})?$/i.test(value)) return "age";
+  if (sourceFilter !== "facebook" && /^\d{1,3}(?:\s*[-–—]\s*\d{1,3})?$/.test(value)) return "age";
+
+  const digits = digitsOnly(value);
+  const numericInput = /^[+\d\s().-]+$/.test(value);
+  if (!numericInput || !digits) return "text";
+
+  let localPhone = digits;
+  if (localPhone.startsWith("00972")) localPhone = `0${localPhone.slice(5)}`;
+  else if (localPhone.startsWith("972")) localPhone = `0${localPhone.slice(3)}`;
+  const looksIsraeliPhone = /^0[2-9]\d{7,8}$/.test(localPhone);
+  const phoneFormatting = /[+()\s-]/.test(value);
+  if (looksIsraeliPhone && (sourceFilter === "facebook" || localPhone.length === 10 || phoneFormatting || digits.startsWith("972") || digits.startsWith("00972"))) return "phone";
+
+  if (sourceFilter === "facebook") return /^\d{1,18}$/.test(digits) ? "facebook-id" : "text";
+  if (digits.length >= 5 && digits.length <= 9) return "national-id";
+  if (digits.length === 10 && digits.startsWith("0")) return "phone";
+  if (sourceFilter === "all" && digits.length >= 10 && digits.length <= 18) return "facebook-id";
+  return "text";
 }
 
 function normalizeText(value: string) {
@@ -509,6 +538,12 @@ export function mergeHits(hits: SearchHit[]): SearchHit[] {
   });
 }
 
+export function keepSelectedSource(hits: SearchHit[], sourceFilter: SourceFilter) {
+  if (sourceFilter === "all") return hits;
+  const sourceLabel = sourceFilter === "agron2006" ? "AGRON 2006" : sourceFilter === "elector" ? "Elector" : "Facebook";
+  return hits.filter((hit) => hit.sourceKey === sourceFilter).map((hit) => ({ ...hit, source: sourceLabel, sourceNames: [sourceLabel] }));
+}
+
 export function mergePhoneHits(hits: SearchHit[]): SearchHit[] {
   const primary = mergeHits(hits.filter((hit) => hit.sourceKey !== "facebook"));
   const facebook = hits.filter((hit) => hit.sourceKey === "facebook");
@@ -575,7 +610,8 @@ export async function searchFullDatasetsById(input: string, sourceFilter: Source
       // Facebook's numeric key is a Facebook profile ID, not an Israeli national ID.
       const sources = manifest.sources.filter((source) => source.key !== "facebook" && (sourceFilter === "all" || source.key === sourceFilter));
       const results = await Promise.all(sources.map((source) => searchSourceById(source, normalized, blockRecords)));
-      return mergeHits(results.flat());
+      const hits = results.flat();
+      return sourceFilter === "all" ? mergeHits(hits) : keepSelectedSource(hits, sourceFilter);
     })());
   }
   return idSearchCache.get(cacheKey)!;
@@ -691,7 +727,7 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
   }
   if (!candidates.length) return [] as SearchHit[];
-  const selectedCandidates = (["firstName", "lastName", "city", "age"] as const).flatMap((field) => candidates
+  const selectedCandidates = (["firstName", "lastName", "city", "address", "age"] as const).flatMap((field) => candidates
     .filter((candidate) => candidate.field === field)
     .sort((left, right) => left.count - right.count)
     .slice(0, matchMode === "similar" ? (field === "age" ? 120 : 4) : (field === "age" ? 120 : 1)));
@@ -726,7 +762,46 @@ export async function searchFullDatasetsByText(criteria: TextSearchCriteria, mat
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
   const hits = await Promise.all(manifest.sources.filter((source) => sourceFilter === "all" || source.key === sourceFilter).map((source) => searchTextInSource(source, criteria, extensions, matchMode)));
   const allHits = hits.flat();
-  return applyFacebookDetails(mergeTextSearchHits(allHits, criteria, matchMode), sourceFilter === "all" ? allHits.filter((hit) => hit.sourceKey === "facebook") : []);
+  const merged = mergeTextSearchHits(allHits, criteria, matchMode);
+  return sourceFilter === "all"
+    ? applyFacebookDetails(merged, allHits.filter((hit) => hit.sourceKey === "facebook"))
+    : keepSelectedSource(merged, sourceFilter);
+}
+
+export async function searchUnifiedQuery(input: string, sourceFilter: SourceFilter = "all", matchMode: TextMatchMode = "exact") {
+  const query = input.trim();
+  if (!query) throw new Error("יש להזין ערך לחיפוש.");
+  const kind = classifyUnifiedQuery(query, sourceFilter);
+  if (kind === "national-id") {
+    if (sourceFilter === "facebook") throw new Error("תעודת זהות זמינה לחיפוש באגרון, באלקטור או בכל המקורות; Facebook תומך בשם, טלפון או מזהה Facebook.");
+    return searchFullDatasetsByIdWithDetails(query.replace(/^(?:ת[.״׳"']?ז\.?|תעודת\s*זהות|id)\s*[:#]?\s*/i, "").replace(/\D/g, ""), sourceFilter);
+  }
+  if (kind === "phone") return searchFullDatasetsByPhone(query.replace(/^(?:טלפון|phone)\s*[:#]?\s*/i, ""), sourceFilter);
+  if (kind === "facebook-id") {
+    if (sourceFilter !== "all" && sourceFilter !== "facebook") throw new Error("מזהה Facebook זמין רק במקור Facebook או בבחירה „הכול”.");
+    const value = query.match(/(\d{1,18})\s*$/)?.[1] ?? query;
+    return searchFullDatasetsByFacebookId(value, sourceFilter);
+  }
+  if (kind === "age") {
+    const age = query.replace(/^גיל\s*/i, "").trim();
+    parseAgeRange(age);
+    return searchFullDatasetsByText({ age }, matchMode, sourceFilter);
+  }
+
+  const words = query.split(/\s+/).filter(Boolean);
+  const searches = words.length === 1
+    ? [
+      searchFullDatasetsByText({ firstName: query }, matchMode, sourceFilter),
+      searchFullDatasetsByText({ lastName: query }, matchMode, sourceFilter),
+      searchFullDatasetsByText({ city: query }, matchMode, sourceFilter),
+      searchFullDatasetsByText({ address: query }, matchMode, sourceFilter),
+    ]
+    : [
+      searchFullDatasetsByText({ firstName: words[0], lastName: words.slice(1).join(" ") }, matchMode, sourceFilter),
+      searchFullDatasetsByText({ city: query }, matchMode, sourceFilter),
+      searchFullDatasetsByText({ address: query }, matchMode, sourceFilter),
+    ];
+  return mergeHits((await Promise.all(searches)).flat());
 }
 
 function phoneMatches(hit: SearchHit, phone: string) {
@@ -793,7 +868,7 @@ export async function searchFullDatasetsByPhone(input: string, sourceFilter: Sou
     const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
     return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone))).map((hit) => ({ ...hit, confidence: "phone-match" as const }));
   }));
-  return mergePhoneHits(all.flat());
+  return sourceFilter === "all" ? mergePhoneHits(all.flat()) : keepSelectedSource(all.flat(), sourceFilter);
 }
 
 export async function searchFullDatasetsByFacebookId(input: string, sourceFilter: SourceFilter = "all") {
