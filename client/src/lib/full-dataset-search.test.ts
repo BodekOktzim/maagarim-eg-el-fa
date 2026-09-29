@@ -171,6 +171,17 @@ describe("unified AGRON/Elector result merging", () => {
     expect(textMatchesWithinSource(person, { address: "חיפה" })).toBe(false);
   });
 
+  it("matches the single location field against city or address alongside optional name criteria", () => {
+    const elector = hit({ source: "Elector", sourceKey: "elector", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", city: undefined, address: "רחוב הרצל 4, חיפה" });
+    const agron = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", city: "חיפה", address: "רחוב הרצל 4" });
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפה" })).toBe(true);
+    expect(textMatchesWithinSource(elector, { firstName: "דוד", lastName: "לוי", location: "חיפה" })).toBe(false);
+    expect(textMatchesWithinSource(agron, { firstName: "דוד", location: "הרצל" })).toBe(true);
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפא" }, "similar")).toBe(true);
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפא" }, "exact")).toBe(false);
+    expect(mergeTextSearchHits([elector], { lastName: "כהן", location: "חיפה" })).toHaveLength(1);
+  });
+
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {
     const [merged] = mergeHits([
       hit({ source: "AGRON 2006", fatherId: "000000001", motherId: "000000002" }),

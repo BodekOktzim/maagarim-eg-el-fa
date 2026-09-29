@@ -42,6 +42,7 @@ export type SearchHit = {
 export type TextSearchCriteria = {
   firstName?: string;
   lastName?: string;
+  location?: string;
   city?: string;
   address?: string;
   age?: string;
@@ -623,7 +624,7 @@ export async function searchFullDatasetsByIdWithDetails(input: string, sourceFil
 }
 
 function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
-  const output: { indexKey: string; field: keyof SearchHit; value: string }[] = [];
+  const output: { indexKey: string; field: keyof TextSearchCriteria; value: string }[] = [];
   if (criteria.firstName?.trim()) {
     const indexKey = sourceKey === "agron2006" ? "text-agron-first" : sourceKey === "elector" ? "text-elector-first" : "text-facebook-first-candidate";
     output.push({ indexKey, field: "firstName", value: criteria.firstName.trim() });
@@ -631,6 +632,14 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
   if (criteria.lastName?.trim()) {
     const indexKey = sourceKey === "agron2006" ? "text-agron-last" : sourceKey === "elector" ? "text-elector-last" : "text-facebook-last-candidate";
     output.push({ indexKey, field: "lastName", value: criteria.lastName.trim() });
+  }
+  if (criteria.location?.trim()) {
+    if (sourceKey === "agron2006") {
+      output.push({ indexKey: "text-agron-city", field: "location", value: criteria.location.trim() });
+      output.push({ indexKey: "text-agron-address", field: "location", value: criteria.location.trim() });
+    } else if (sourceKey === "elector") {
+      output.push({ indexKey: "text-elector-address", field: "location", value: criteria.location.trim() });
+    }
   }
   if (criteria.city?.trim() && sourceKey === "agron2006") output.push({ indexKey: "text-agron-city", field: "city", value: criteria.city.trim() });
   if (criteria.address?.trim()) {
@@ -645,6 +654,8 @@ function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: Te
     const term = criteria[field]?.trim();
     if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
   }
+  const location = criteria.location?.trim();
+  if (location && ![hit.city, hit.address].some((value) => value && textValueMatches(value, location, matchMode))) return false;
   const ageRange = parseAgeRange(criteria.age);
   if (ageRange) {
     const age = Number(hit.age);
@@ -675,7 +686,9 @@ export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCrite
     const exactNameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, "exact"));
     const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, matchMode));
     const exactCityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, "exact"));
-    if (nameAndAgeMatch && cityMatch) eligible.push({ key, hits: group, approximate: !exactNameAndAgeMatch || !exactCityMatch });
+    const locationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, matchMode));
+    const exactLocationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, "exact"));
+    if (nameAndAgeMatch && cityMatch && locationMatch) eligible.push({ key, hits: group, approximate: !exactNameAndAgeMatch || !exactCityMatch || !exactLocationMatch });
   });
   const approximateKeys = new Set(eligible.filter((group) => group.approximate).map((group) => group.key));
   const merged = mergeHits(eligible.flatMap((group) => group.hits)).slice(0, 250);
@@ -700,10 +713,10 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
 
 async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
-  if (criteria.address && source.key === "facebook") return [] as SearchHit[];
+  if ((criteria.address || criteria.location) && source.key === "facebook") return [] as SearchHit[];
   const ageRange = parseAgeRange(criteria.age);
   const criteriaItems = criteriaForSource(criteria, source.key);
-  const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof SearchHit; count: number }[] = [];
+  const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof TextSearchCriteria; count: number }[] = [];
   for (const criterion of criteriaItems) {
     const grams = bigrams(matchMode === "similar" ? normalizeFuzzyToken(criterion.value) : criterion.value);
     if (normalizeText(criterion.value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
@@ -727,10 +740,20 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
   }
   if (!candidates.length) return [] as SearchHit[];
-  const selectedCandidates = (["firstName", "lastName", "city", "address", "age"] as const).flatMap((field) => candidates
-    .filter((candidate) => candidate.field === field)
-    .sort((left, right) => left.count - right.count)
-    .slice(0, matchMode === "similar" ? (field === "age" ? 120 : 4) : (field === "age" ? 120 : 1)));
+  const selectedCandidates = (["firstName", "lastName", "city", "address", "location", "age"] as const).flatMap((field) => {
+    const fieldCandidates = candidates.filter((candidate) => candidate.field === field).sort((left, right) => left.count - right.count);
+    if (field === "location") {
+      const byIndex = new Map<string, typeof fieldCandidates>();
+      for (const candidate of fieldCandidates) {
+        const indexKey = `${candidate.meta.source}:${candidate.meta.indexFiles?.join(",") ?? candidate.meta.indexFile}`;
+        const list = byIndex.get(indexKey) ?? [];
+        list.push(candidate);
+        byIndex.set(indexKey, list);
+      }
+      return Array.from(byIndex.values()).flatMap((items) => items.slice(0, matchMode === "similar" ? 4 : 1));
+    }
+    return fieldCandidates.slice(0, matchMode === "similar" ? (field === "age" ? 120 : 4) : (field === "age" ? 120 : 1));
+  });
   const pointerScores = new Map<number, { pointer: RowPointer; score: number; order: number }>();
   const postingGroups = await Promise.all(selectedCandidates.map((candidate) =>
     readPostingGroup(candidate.meta, candidate.key, matchMode === "similar" ? 10_000 : 300_000, true)));
@@ -752,11 +775,11 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
 }
 
 export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact", sourceFilter: SourceFilter = "all") {
-  const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.city?.trim() || criteria.address?.trim());
+  const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.location?.trim() || criteria.city?.trim() || criteria.address?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
   if (age) parseAgeRange(age);
-  for (const value of [criteria.firstName, criteria.lastName, criteria.city, criteria.address]) {
+  for (const value of [criteria.firstName, criteria.lastName, criteria.location, criteria.city, criteria.address]) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
   }
   const [manifest, extensions] = await Promise.all([getManifest(), getExtensionManifest()]);
