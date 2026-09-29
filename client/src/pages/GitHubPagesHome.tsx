@@ -24,6 +24,12 @@ const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "elector", label: "אלקטור" },
   { id: "facebook", label: "Facebook" },
 ];
+const SOURCE_QUERY_HINT: Record<SourceFilter, string> = {
+  all: "אפשר לחפש לפי שם, תעודת זהות, טלפון, מזהה Facebook, יישוב, כתובת או גיל.",
+  agron2006: "אפשר לחפש באגרון לפי שם, תעודת זהות, טלפון, יישוב, כתובת או גיל.",
+  elector: "אפשר לחפש באלקטור לפי שם, תעודת זהות, טלפון או כתובת.",
+  facebook: "אפשר לחפש ב־Facebook לפי שם, טלפון או מזהה Facebook.",
+};
 
 type SearchDetailGroup = { title: string; rows: [string, string][] };
 
@@ -268,12 +274,13 @@ export default function GitHubPagesHome() {
             </div>
           </div>
 
+          <p className="text-sm leading-relaxed text-white/70">{SOURCE_QUERY_HINT[sourceFilter]}</p>
           <div className="flex flex-col gap-3 sm:flex-row">
             <label htmlFor="unified-search-query" className="sr-only">שם, מזהה, טלפון, יישוב, כתובת או גיל</label>
-            <input id="unified-search-query" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={sourceFilter === "facebook" ? "שם, טלפון או מזהה Facebook" : "שם, תעודת זהות, טלפון, יישוב, כתובת או גיל"} aria-describedby="unified-search-hint" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            <input id="unified-search-query" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="הקלד כאן לחיפוש" aria-describedby="unified-search-hint" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             <button type="submit" disabled={isSearching || !query.trim()} className="h-14 shrink-0 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש ב־{SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול"}</>}</button>
           </div>
-          <p id="unified-search-hint" className="text-xs leading-relaxed text-white/45">הקלד פרט אחד: שם מלא/חלקי, תעודת זהות, טלפון, יישוב, כתובת או גיל. סוג הערך מזוהה אוטומטית; כל החיפוש נעשה במקור שבחרת.</p>
+          <p id="unified-search-hint" className="text-xs leading-relaxed text-white/45">המערכת מזהה אוטומטית את סוג הערך שהוקלד ומחפשת במקור שבחרת.</p>
 
           {query.trim() && queryKind === "text" && <section className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="מצב התאמת טקסט">
             <p className="mb-2 text-xs font-semibold text-white/75">התאמת שם או טקסט</p>
