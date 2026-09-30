@@ -1,443 +1,249 @@
 {
   "schema": 1,
-<<<<<<< HEAD
-  "revision": "f95cd27ba783c1988c0eac896ad5168ad226f36f",
-  "dataCommit": "f95cd27ba783c1988c0eac896ad5168ad226f36f",
+  "revision": "cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b",
+  "dataCommit": "cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b",
   "totalBytes": 11736480449,
-=======
-  "revision": "cedaae255eb231329b7006f70934ae0b7a226210",
-  "dataCommit": "cedaae255eb231329b7006f70934ae0b7a226210",
-  "totalBytes": 11318269773,
->>>>>>> origin/main
   "chunkBytes": 8388608,
   "files": [
     {
       "path": "datasets/AGRON2006.txt",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/datasets/AGRON2006.txt",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/datasets/AGRON2006.txt",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/datasets/AGRON2006.txt",
       "bytes": 1841092492,
       "sha256": "6ae835a9bcbc42f2df74a5baa228e16ab511987d386b875c4fa5fb05354eb5a6"
     },
     {
       "path": "datasets/Elector.txt",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/datasets/Elector.txt",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/datasets/Elector.txt",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/datasets/Elector.txt",
       "bytes": 726871718,
       "sha256": "31bd9d2cca436aec8dce47d0c1caf8665c8daa11e80a0fa58b47a0d9d63192d2"
     },
     {
       "path": "datasets/Facebook.txt",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/datasets/Facebook.txt",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/datasets/Facebook.txt",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/datasets/Facebook.txt",
       "bytes": 316886147,
       "sha256": "48d13cff6ea695d112dc2a68be8569421c38f3cd3ffbee6061824cd1832b599d"
     },
     {
       "path": "index-seek/age-agron.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/age-agron.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/age-agron.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/age-agron.sparse.bin",
       "bytes": 25944
     },
     {
       "path": "index-seek/agron2006.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/agron2006.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/agron2006.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/agron2006.sparse.bin",
       "bytes": 36016
     },
     {
       "path": "index-seek/elector.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/elector.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/elector.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/elector.sparse.bin",
       "bytes": 24176
     },
     {
       "path": "index-seek/extensions-manifest.json",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/extensions-manifest.json",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/extensions-manifest.json",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/extensions-manifest.json",
       "bytes": 5990
     },
     {
       "path": "index-seek/facebook-id.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/facebook-id.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/facebook-id.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/facebook-id.sparse.bin",
       "bytes": 15456
     },
     {
       "path": "index-seek/facebook.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/facebook.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/facebook.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/facebook.sparse.bin",
       "bytes": 1072
     },
     {
       "path": "index-seek/family-agron-parent-child.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/family-agron-parent-child.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/family-agron-parent-child.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/family-agron-parent-child.sparse.bin",
       "bytes": 31164
     },
     {
       "path": "index-seek/manifest.json",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/manifest.json",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/manifest.json",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/manifest.json",
       "bytes": 770
     },
     {
       "path": "index-seek/phone-agron.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/phone-agron.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/phone-agron.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/phone-agron.sparse.bin",
       "bytes": 7392
     },
     {
       "path": "index-seek/phone-elector.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/phone-elector.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/phone-elector.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/phone-elector.sparse.bin",
       "bytes": 132
     },
     {
       "path": "index-seek/phone-facebook-candidate.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/phone-facebook-candidate.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/phone-facebook-candidate.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/phone-facebook-candidate.sparse.bin",
       "bytes": 11592
     },
     {
       "path": "index-seek/text-agron-address-0.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-agron-address-0.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-agron-address-0.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-agron-address-0.sparse.bin",
       "bytes": 398196
     },
     {
       "path": "index-seek/text-agron-address-1.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-agron-address-1.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-agron-address-1.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-agron-address-1.sparse.bin",
       "bytes": 50292
     },
     {
       "path": "index-seek/text-agron-city.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-agron-city.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-agron-city.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-agron-city.sparse.bin",
       "bytes": 147300
     },
     {
       "path": "index-seek/text-agron-first.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-agron-first.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-agron-first.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-agron-first.sparse.bin",
       "bytes": 104496
     },
     {
       "path": "index-seek/text-agron-last.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-agron-last.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-agron-last.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-agron-last.sparse.bin",
       "bytes": 116376
     },
     {
       "path": "index-seek/text-elector-address-0.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-elector-address-0.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-elector-address-0.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-elector-address-0.sparse.bin",
       "bytes": 374196
     },
     {
       "path": "index-seek/text-elector-address-1.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-elector-address-1.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-elector-address-1.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-elector-address-1.sparse.bin",
       "bytes": 26292
     },
     {
       "path": "index-seek/text-elector-first.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-elector-first.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-elector-first.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-elector-first.sparse.bin",
       "bytes": 75516
     },
     {
       "path": "index-seek/text-elector-last.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-elector-last.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-elector-last.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-elector-last.sparse.bin",
       "bytes": 81936
     },
     {
       "path": "index-seek/text-facebook-first-candidate.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-facebook-first-candidate.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-facebook-first-candidate.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-facebook-first-candidate.sparse.bin",
       "bytes": 44772
     },
     {
       "path": "index-seek/text-facebook-last-candidate.sparse.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/client/public/index-seek/text-facebook-last-candidate.sparse.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/client/public/index-seek/text-facebook-last-candidate.sparse.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/client/public/index-seek/text-facebook-last-candidate.sparse.bin",
       "bytes": 56760
     },
     {
       "path": "search-index-full/age-agron.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/age-agron.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/age-agron.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/age-agron.bin",
       "bytes": 141681040,
       "sha256": "64a2176476983fc28eb7127559a4bed679064be1da95de2589be38b31c2904e2"
     },
     {
       "path": "search-index-full/agron2006.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/agron2006.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/agron2006.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/agron2006.bin",
       "bytes": 147513696,
       "sha256": "5bcc0b4d4ebd05df962282d40f7e09f8ee4c9a65240bc507b4ff62a48522ad49"
     },
     {
       "path": "search-index-full/elector.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/elector.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/elector.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/elector.bin",
       "bytes": 99001328,
       "sha256": "72e81dadd77e82b8a765cce6b65c1d768a4e1a9b376d357f165e5782b6d74346"
     },
     {
       "path": "search-index-full/facebook-id.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/facebook-id.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/facebook-id.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/facebook-id.bin",
       "bytes": 79128560
     },
     {
       "path": "search-index-full/facebook.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/facebook.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/facebook.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/facebook.bin",
       "bytes": 4345408,
       "sha256": "bc91d4d4cbd14ee0b60feda964d67710e53b778f80d3e0bae4a00d180d66efff"
     },
     {
       "path": "search-index-full/family-agron-parent-child.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/family-agron-parent-child.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/family-agron-parent-child.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/family-agron-parent-child.bin",
       "bytes": 212713520,
       "sha256": "f8e8bcdf16cd2b69c674d8c46e3df7e550239b9e77abd9db8ec10a622676c398"
     },
     {
       "path": "search-index-full/phone-agron.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/phone-agron.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/phone-agron.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/phone-agron.bin",
       "bytes": 40329488,
       "sha256": "f71f943690860344f13e4e1157ffd2957ed62938b2ff19b30e0dd032cbf658e1"
     },
     {
       "path": "search-index-full/phone-elector.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/phone-elector.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/phone-elector.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/phone-elector.bin",
       "bytes": 665856,
       "sha256": "43019de5b387407e4aa42558211f9e4f587073b97cfdd6742c0ad8ede8e059cb"
     },
     {
       "path": "search-index-full/phone-facebook-candidate.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/phone-facebook-candidate.bin",
-=======
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/phone-facebook-candidate.bin",
->>>>>>> origin/main
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/phone-facebook-candidate.bin",
       "bytes": 63302848
     },
     {
       "path": "search-index-full/text-agron-address-0.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-agron-address-0.bin",
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-agron-address-0.bin",
       "bytes": 2174634560
     },
     {
       "path": "search-index-full/text-agron-address-1.bin",
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-agron-address-1.bin",
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-agron-address-1.bin",
       "bytes": 274634560
     },
     {
       "path": "search-index-full/text-agron-city.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-agron-city.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-agron-address-0.bin",
-      "bytes": 2174634560,
-      "sha256": "f2c6815c5cc377e95b6edc7c0c451169a53b82f458f03707def60f571e22f04b"
-    },
-    {
-      "path": "search-index-full/text-agron-address-1.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-agron-address-1.bin",
-      "bytes": 134,
-      "sha256": "c3b482a7a11929abeeed34f4ae8f613785aa94fb5a77e858bd32028999a1de82"
-    },
-    {
-      "path": "search-index-full/text-agron-city.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-agron-city.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-agron-city.bin",
       "bytes": 804448896,
       "sha256": "c7d8b373d8d331d8378f60e4c94316e3c0909c1584d12c7eb4de41ec7ba02973"
     },
     {
       "path": "search-index-full/text-agron-first.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-agron-first.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-agron-first.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-agron-first.bin",
       "bytes": 570673296,
       "sha256": "6b69460b9192f273922f33eafaca6d332a8ab303d42e7386042f181dce3645e5"
     },
     {
       "path": "search-index-full/text-agron-last.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-agron-last.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-agron-last.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-agron-last.bin",
       "bytes": 635512704,
       "sha256": "3703c034e0f57b1461b9211ba55000194c39a3327729f8a181d470d80feef39d"
     },
     {
       "path": "search-index-full/text-elector-address-0.bin",
-<<<<<<< HEAD
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-elector-address-0.bin",
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-elector-address-0.bin",
       "bytes": 2043576384
     },
     {
       "path": "search-index-full/text-elector-address-1.bin",
-      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-elector-address-1.bin",
+      "url": "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-elector-address-1.bin",
       "bytes": 143576384
     },
     {
       "path": "search-index-full/text-elector-first.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-elector-first.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-elector-address-0.bin",
-      "bytes": 2043576384,
-      "sha256": "55eefe3a1aa3a348c77ba8608d0e641fbf3f6c2283234bbd8ef7268380888eac"
-    },
-    {
-      "path": "search-index-full/text-elector-address-1.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-elector-address-1.bin",
-      "bytes": 134,
-      "sha256": "d9f62c5098289c279010609b63b1fee3fa2592c18a3bd111e0924fdab3515777"
-    },
-    {
-      "path": "search-index-full/text-elector-first.bin",
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-elector-first.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-elector-first.bin",
       "bytes": 412381392,
       "sha256": "35af86f8a05871503f58c4961e2bfa110134412a6670429afc5cd29df86ebc80"
     },
     {
       "path": "search-index-full/text-elector-last.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-elector-last.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-elector-last.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-elector-last.bin",
       "bytes": 447427104,
       "sha256": "8a9565245d6190629a561bcc704a9c19b8f8cebcfb3dea027029d1f1b08e3eb8"
     },
     {
       "path": "search-index-full/text-facebook-first-candidate.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-facebook-first-candidate.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-facebook-first-candidate.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-facebook-first-candidate.bin",
       "bytes": 244503008,
       "sha256": "5555ecd4be0b3fb5a31d4193582eea0482de56bdc6f3b20864b8c930237c9377"
     },
     {
       "path": "search-index-full/text-facebook-last-candidate.bin",
-<<<<<<< HEAD
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/f95cd27ba783c1988c0eac896ad5168ad226f36f/search-index-full/text-facebook-last-candidate.bin",
-=======
-      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cedaae255eb231329b7006f70934ae0b7a226210/search-index-full/text-facebook-last-candidate.bin",
->>>>>>> origin/main
+      "url": "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/cd7f7b28997bdffbf06bcbe2144e2bbbe70ff73b/search-index-full/text-facebook-last-candidate.bin",
       "bytes": 309944224,
       "sha256": "39659dae936be6733b176571683a317b52ec1b742466101e9c26acb4bf49a0c4"
     }
