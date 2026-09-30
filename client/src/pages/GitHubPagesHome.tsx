@@ -1,11 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CalendarDays, Download, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
+import { CalendarDays, Download, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Phone, Search, UserRound, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
   searchFamilyTreeById,
-  searchUnifiedQuery,
+  searchFullDatasetsByIdWithDetails,
+  searchFullDatasetsByFacebookId,
+  searchFullDatasetsByPhone,
+  searchFullDatasetsByText,
+  parseAgeRange,
   type SourceFilter,
   type FamilyTreeData,
   type SearchHit,
@@ -15,6 +19,7 @@ const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311
 const SESSION_KEY = `maagarim-pages-unlocked-${import.meta.env.VITE_BUILD_ID ?? "dev"}`;
 const AWAY_TTL_MS = 30 * 60 * 1000;
 const normalizeId = (value: string) => value.replace(/\D/g, "");
+type SearchMode = "national-id" | "phone" | "facebook-id" | "details";
 
 type SearchDetailGroup = { title: string; rows: [string, string][] };
 
@@ -66,7 +71,10 @@ export default function GitHubPagesHome() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [mode, setMode] = useState<SearchMode>("national-id");
   const [query, setQuery] = useState("");
+  const [criteria, setCriteria] = useState({ firstName: "", lastName: "", city: "", address: "", age: "" });
+  const [textMatchMode, setTextMatchMode] = useState<"exact" | "similar">("exact");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -157,6 +165,16 @@ export default function GitHubPagesHome() {
     };
   }, [sessionStartedAt]);
 
+  const switchMode = (next: SearchMode) => {
+    setMode(next);
+    setQuery("");
+    setCriteria({ firstName: "", lastName: "", city: "", address: "", age: "" });
+    setResults([]);
+    setSearchError("");
+    setSearched(false);
+    clearTree();
+  };
+
   const runSearch = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     if (isSearching) return;
@@ -166,10 +184,25 @@ export default function GitHubPagesHome() {
     clearTree();
     setIsSearching(true);
     try {
-      const value = query.trim();
-      if (!value) throw new Error("יש להזין ערך לחיפוש.");
-      setLastQuery(value);
-      setResults(await searchUnifiedQuery(value, sourceFilter, "exact"));
+      if (mode === "national-id") {
+        const digits = normalizeId(query);
+        if (digits.length < 5 || digits.length > 9) throw new Error("יש להזין מספר תעודת זהות בן 5–9 ספרות.");
+        setLastQuery(`ת״ז ${digits}`);
+        setResults(await searchFullDatasetsByIdWithDetails(digits, sourceFilter));
+      } else if (mode === "phone") {
+        if (query.replace(/\D/g, "").length < 7) throw new Error("יש להזין מספר טלפון בן 7 ספרות לפחות.");
+        setLastQuery(`טלפון ${query.trim()}`);
+        setResults(await searchFullDatasetsByPhone(query, sourceFilter));
+      } else if (mode === "facebook-id") {
+        setLastQuery(`Facebook ID ${query.trim()}`);
+        setResults(await searchFullDatasetsByFacebookId(query, sourceFilter));
+      } else {
+        const searchCriteria = Object.fromEntries(Object.entries(criteria).map(([key, value]) => [key, value.trim()])) as typeof criteria;
+        if (!Object.values(searchCriteria).some(Boolean)) throw new Error("יש למלא לפחות שדה אחד: שם פרטי, שם משפחה, כתובת, יישוב או גיל.");
+        if (searchCriteria.age) parseAgeRange(searchCriteria.age);
+        setLastQuery(Object.values(searchCriteria).filter(Boolean).join(" · "));
+        setResults(await searchFullDatasetsByText(searchCriteria, textMatchMode, sourceFilter));
+      }
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
@@ -253,9 +286,20 @@ export default function GitHubPagesHome() {
           </div>
         </div>
 
-        <form onSubmit={runSearch} className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <input autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="תעודת זהות, טלפון, מזהה Facebook או שם" aria-label="ערך חיפוש" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-          <button type="submit" disabled={isSearching || !query.trim()} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0] disabled:opacity-50">{isSearching ? <><LoaderCircle size={17} className="ml-2 inline animate-spin"/>מחפש…</> : <><Search size={17} className="ml-2 inline"/>חפש במקור שנבחר</>}</button>
+        <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="סוג חיפוש">
+          {([
+            ["national-id", "תעודת זהות", UserRound], ["phone", "טלפון", Phone], ["facebook-id", "מזהה Facebook", Network], ["details", "שם · יישוב · גיל", Search],
+          ] as const).map(([id, label, Icon]) => <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => switchMode(id)} className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-medium transition ${mode === id ? "border-[#f2a9d2]/50 bg-[#f2a9d2] text-[#30123e]" : "border-white/10 bg-white/[0.035] text-white/70 hover:bg-white/10"}`}><Icon size={16}/>{label}</button>)}
+        </div>
+
+        <form onSubmit={runSearch} className="mt-5 space-y-4">
+          {mode === "national-id" && <div className="flex flex-col gap-3 sm:flex-row"><input inputMode="numeric" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="תעודת זהות — 5 עד 9 ספרות" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/><button type="submit" disabled={isSearching} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] disabled:opacity-50">{isSearching ? "מחפש…" : <><Search size={17} className="ml-2 inline"/>חפש תעודת זהות</>}</button></div>}
+          {mode === "phone" && <div className="flex flex-col gap-3 sm:flex-row"><input type="tel" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="מספר טלפון — אפשר עם קידומת" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/><button type="submit" disabled={isSearching} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] disabled:opacity-50">{isSearching ? "מחפש…" : <><Search size={17} className="ml-2 inline"/>חפש טלפון</>}</button></div>}
+          {mode === "facebook-id" && <div className="flex flex-col gap-3 sm:flex-row"><input inputMode="numeric" autoComplete="off" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="מזהה Facebook מספרי" className="h-14 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/><button type="submit" disabled={isSearching} className="h-14 rounded-xl bg-[#f2a9d2] px-7 font-semibold text-[#30123e] disabled:opacity-50">{isSearching ? "מחפש…" : <><Search size={17} className="ml-2 inline"/>חפש מזהה</>}</button></div>}
+          {mode === "details" && <>
+            <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={textMatchMode === "exact"} onClick={() => setTextMatchMode("exact")} className={`rounded-xl border px-4 py-2 text-sm ${textMatchMode === "exact" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 text-white/70"}`}>חיפוש מדויק</button><button type="button" aria-pressed={textMatchMode === "similar"} onClick={() => setTextMatchMode("similar")} className={`rounded-xl border px-4 py-2 text-sm ${textMatchMode === "similar" ? "border-[#f2a9d2]/60 bg-[#f2a9d2] text-[#30123e]" : "border-white/15 text-white/70"}`}>חיפוש דומה</button></div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><input autoComplete="off" value={criteria.firstName} onChange={(event) => setCriteria((prev) => ({ ...prev, firstName: event.target.value }))} placeholder="שם פרטי" className="h-12 rounded-xl border-0 bg-white px-4 text-sm text-slate-900"/><input autoComplete="off" value={criteria.lastName} onChange={(event) => setCriteria((prev) => ({ ...prev, lastName: event.target.value }))} placeholder="שם משפחה" className="h-12 rounded-xl border-0 bg-white px-4 text-sm text-slate-900"/><input autoComplete="off" value={criteria.city} onChange={(event) => setCriteria((prev) => ({ ...prev, city: event.target.value }))} placeholder="יישוב" className="h-12 rounded-xl border-0 bg-white px-4 text-sm text-slate-900"/><input autoComplete="off" value={criteria.address} onChange={(event) => setCriteria((prev) => ({ ...prev, address: event.target.value }))} placeholder="כתובת או שכונה" className="h-12 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 sm:col-span-2"/><input inputMode="numeric" autoComplete="off" value={criteria.age} onChange={(event) => setCriteria((prev) => ({ ...prev, age: event.target.value }))} placeholder="גיל או טווח, למשל 20-30" className="h-12 rounded-xl border-0 bg-white px-4 text-sm text-slate-900 sm:col-span-2 lg:col-span-1"/><button type="submit" disabled={isSearching} className="h-12 rounded-xl bg-[#f2a9d2] px-6 font-semibold text-[#30123e] disabled:opacity-50 sm:col-span-2 lg:col-span-5">{isSearching ? "מחפש…" : <><Search size={17} className="ml-2 inline"/>חיפוש לפי פרטים</>}</button></div>
+          </>}
         </form>
         {searchError && <p role="alert" className="mt-3 rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{searchError}</p>}
         <div className="mt-4 text-xs text-white/45">התוצאות מאוחדות לרשומה אחת; פרטי כתובת וטלפון מוצגים לפי השנה הזמינה.</div>
