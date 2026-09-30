@@ -684,10 +684,8 @@ export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCrite
   groups.forEach((group, key) => {
     const nameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, matchMode));
     const exactNameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, "exact"));
-    // A person can have different cities in AGRON (2006) and Elector (2020).
-    // Match the requested city against either historical source before merging.
-    const cityMatch = !criteria.city?.trim() || group.some((hit) => textMatches(hit, { city: criteria.city }, matchMode));
-    const exactCityMatch = !criteria.city?.trim() || group.some((hit) => textMatches(hit, { city: criteria.city }, "exact"));
+    const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, matchMode));
+    const exactCityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, "exact"));
     const locationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, matchMode));
     const exactLocationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, "exact"));
     if (nameAndAgeMatch && cityMatch && locationMatch) eligible.push({ key, hits: group, approximate: !exactNameAndAgeMatch || !exactCityMatch || !exactLocationMatch });
@@ -823,13 +821,8 @@ export async function searchUnifiedQuery(input: string, sourceFilter: SourceFilt
     ]
     : [
       searchFullDatasetsByText({ firstName: words[0], lastName: words.slice(1).join(" ") }, matchMode, sourceFilter),
-      searchFullDatasetsByText({ firstName: words[0], lastName: words[1] }, matchMode, sourceFilter),
       searchFullDatasetsByText({ city: query }, matchMode, sourceFilter),
       searchFullDatasetsByText({ address: query }, matchMode, sourceFilter),
-      ...(words.length > 2 ? [
-        searchFullDatasetsByText({ firstName: words[0], lastName: words[1], city: words.slice(2).join(" ") }, matchMode, sourceFilter),
-        searchFullDatasetsByText({ city: words.slice(2).join(" ") }, matchMode, sourceFilter),
-      ] : []),
     ];
   return mergeHits((await Promise.all(searches)).flat());
 }

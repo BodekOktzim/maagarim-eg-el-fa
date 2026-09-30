@@ -1,9 +1,18 @@
-/* OSINT Search release c1252f569a57947623d114bc610413995ab4e9e3; user-approved, version-pinned offline shell. */
-const BUILD_ID = "c1252f569a57947623d114bc610413995ab4e9e3";
+<<<<<<<< HEAD:service-worker-f95cd27ba783c1988c0eac896ad5168ad226f36f.js
+/* OSINT Search release f95cd27ba783c1988c0eac896ad5168ad226f36f; user-approved, version-pinned offline shell. */
+const BUILD_ID = "f95cd27ba783c1988c0eac896ad5168ad226f36f";
 const BASE_PATH = "/maagarim-eg-el-fa/";
 const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
 const CACHE_PREFIX = "osint-search-shell-";
-const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-Cq_vFaFn.js","/maagarim-eg-el-fa/assets/index-jnAvnTl6.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
+const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-CIHTncg2.js","/maagarim-eg-el-fa/assets/index-DxU1OAeE.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
+========
+/* OSINT Search release cedaae255eb231329b7006f70934ae0b7a226210; user-approved, version-pinned offline shell. */
+const BUILD_ID = "cedaae255eb231329b7006f70934ae0b7a226210";
+const BASE_PATH = "/maagarim-eg-el-fa/";
+const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
+const CACHE_PREFIX = "osint-search-shell-";
+const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-DdagXTsn.css","/maagarim-eg-el-fa/assets/index-Q1iOXOR5.js","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
+>>>>>>>> origin/main:service-worker-cedaae255eb231329b7006f70934ae0b7a226210.js
 const INDEX_URL = BASE_PATH + "index.html";
 const VERSION_PATH = BASE_PATH + "pwa-version.json";
 
