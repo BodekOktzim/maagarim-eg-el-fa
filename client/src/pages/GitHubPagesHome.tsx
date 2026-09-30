@@ -5,10 +5,7 @@ import PwaControls from "@/components/PwaControls";
 import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
   searchFamilyTreeById,
-  searchFullDatasetsByIdWithDetails,
-  searchFullDatasetsByFacebookId,
-  searchFullDatasetsByPhone,
-  searchFullDatasetsByText,
+  searchUnifiedQuery,
   type SourceFilter,
   type FamilyTreeData,
   type SearchHit,
@@ -170,27 +167,9 @@ export default function GitHubPagesHome() {
     setIsSearching(true);
     try {
       const value = query.trim();
-      const digits = normalizeId(value);
       if (!value) throw new Error("יש להזין ערך לחיפוש.");
-      if (/^\d+$/.test(value) && digits.length >= 5 && digits.length <= 9) {
-        setLastQuery(`ת״ז ${digits}`);
-        setResults(await searchFullDatasetsByIdWithDetails(digits, sourceFilter));
-      } else if (sourceFilter === "facebook" && /^\d{1,18}$/.test(value)) {
-        setLastQuery(`Facebook ID ${value}`);
-        setResults(await searchFullDatasetsByFacebookId(value, sourceFilter));
-      } else if (/^(?:\+?972|0)[\d\s().-]{6,}$/.test(value) || (digits.length >= 10 && sourceFilter !== "facebook")) {
-        if (digits.length < 7) throw new Error("יש להזין מספר טלפון בן 7 ספרות לפחות.");
-        setLastQuery(`טלפון ${value}`);
-        setResults(await searchFullDatasetsByPhone(value, sourceFilter));
-      } else if (/^\d+$/.test(value)) {
-        setLastQuery(`Facebook ID ${value}`);
-        setResults(await searchFullDatasetsByFacebookId(value, sourceFilter));
-      } else {
-        const [firstName, ...lastNameParts] = value.split(/\s+/);
-        const criteria = { firstName, lastName: lastNameParts.join(" ") };
-        setLastQuery(value);
-        setResults(await searchFullDatasetsByText(criteria, "exact", sourceFilter));
-      }
+      setLastQuery(value);
+      setResults(await searchUnifiedQuery(value, sourceFilter, "exact"));
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {

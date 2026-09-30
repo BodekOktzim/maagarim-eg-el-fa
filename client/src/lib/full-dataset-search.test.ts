@@ -121,7 +121,7 @@ describe("unified AGRON/Elector result merging", () => {
     });
     const elector = hit({
       source: "Elector", sourceKey: "elector", firstName: "מיכל", lastName: "כהן",
-      fullName: "מיכל כהן", city: undefined, address: "הסביון 2, מטולה",
+      fullName: "מיכל כהן", city: "תל אביב", address: "הסביון 2, תל אביב",
     });
     const facebook = hit({
       source: "Facebook", sourceKey: "facebook", firstName: "מיכל", lastName: "כהן",
@@ -133,10 +133,11 @@ describe("unified AGRON/Elector result merging", () => {
     const [merged] = mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "מטולה" });
     expect(merged).toMatchObject({
       source: "מאגר מאוחד",
-      address: "הסביון 2, מטולה",
+      address: "הסביון 2, תל אביב",
       addressYear: "2020",
-      city: "מטולה",
+      city: "תל אביב",
     });
+    expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "תל אביב" })).toHaveLength(1);
     expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "חיפה" })).toHaveLength(0);
   });
 
