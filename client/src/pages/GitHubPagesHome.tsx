@@ -71,7 +71,7 @@ export default function GitHubPagesHome() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [mode, setMode] = useState<SearchMode>("national-id");
+  const [mode, setMode] = useState<SearchMode>("details");
   const [query, setQuery] = useState("");
   const [criteria, setCriteria] = useState({ firstName: "", lastName: "", city: "", address: "", age: "" });
   const [textMatchMode, setTextMatchMode] = useState<"exact" | "similar">("exact");
