@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFacebookDetails, currentAgeFromBirthDate, formatBirthDate, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
+import { applyFacebookDetails, classifyUnifiedQuery, currentAgeFromBirthDate, formatBirthDate, keepSelectedSource, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -11,6 +11,28 @@ const hit = (overrides: Partial<SearchHit>): SearchHit => ({
 });
 
 describe("unified AGRON/Elector result merging", () => {
+  it("classifies a single unified query without a separate search-mode selector", () => {
+    expect(classifyUnifiedQuery("123456789", "all")).toBe("national-id");
+    expect(classifyUnifiedQuery("ת״ז 123456789", "all")).toBe("national-id");
+    expect(classifyUnifiedQuery("08-8677191", "all")).toBe("phone");
+    expect(classifyUnifiedQuery("טלפון 8677191", "all")).toBe("phone");
+    expect(classifyUnifiedQuery("Facebook ID 123456789012", "all")).toBe("facebook-id");
+    expect(classifyUnifiedQuery("fb-123", "all")).toBe("facebook-id");
+    expect(classifyUnifiedQuery("123456789012", "facebook")).toBe("facebook-id");
+    expect(classifyUnifiedQuery("32", "all")).toBe("age");
+    expect(classifyUnifiedQuery("דוד כהן", "all")).toBe("text");
+  });
+
+  it("keeps results inside a selected source and leaves all-source results untouched", () => {
+    const agron = hit({ sourceKey: "agron2006", source: "AGRON 2006" });
+    const elector = hit({ sourceKey: "elector", source: "Elector" });
+    const facebook = hit({ sourceKey: "facebook", source: "Facebook", facebookId: "123" });
+    expect(keepSelectedSource([agron, elector, facebook], "agron2006")).toEqual([{ ...agron, sourceNames: ["AGRON 2006"] }]);
+    expect(keepSelectedSource([agron, elector, facebook], "elector")).toEqual([{ ...elector, sourceNames: ["Elector"] }]);
+    expect(keepSelectedSource([agron, elector, facebook], "facebook")).toEqual([{ ...facebook, sourceNames: ["Facebook"] }]);
+    expect(keepSelectedSource([agron, elector, facebook], "all")).toHaveLength(3);
+  });
+
   it("accepts a single age or an inclusive age range", () => {
     expect(parseAgeRange("20")).toEqual({ min: 20, max: 20 });
     expect(parseAgeRange("20-30")).toEqual({ min: 20, max: 30 });
@@ -147,6 +169,17 @@ describe("unified AGRON/Elector result merging", () => {
     expect(textMatchesWithinSource(person, { address: "דולצין 20" })).toBe(true);
     expect(textMatchesWithinSource(person, { lastName: "ביטון", address: "רמת גן" })).toBe(true);
     expect(textMatchesWithinSource(person, { address: "חיפה" })).toBe(false);
+  });
+
+  it("matches the single location field against city or address alongside optional name criteria", () => {
+    const elector = hit({ source: "Elector", sourceKey: "elector", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", city: undefined, address: "רחוב הרצל 4, חיפה" });
+    const agron = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", city: "חיפה", address: "רחוב הרצל 4" });
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפה" })).toBe(true);
+    expect(textMatchesWithinSource(elector, { firstName: "דוד", lastName: "לוי", location: "חיפה" })).toBe(false);
+    expect(textMatchesWithinSource(agron, { firstName: "דוד", location: "הרצל" })).toBe(true);
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפא" }, "similar")).toBe(true);
+    expect(textMatchesWithinSource(elector, { lastName: "כהן", location: "חיפא" }, "exact")).toBe(false);
+    expect(mergeTextSearchHits([elector], { lastName: "כהן", location: "חיפה" })).toHaveLength(1);
   });
 
   it("keeps AGRON family identifiers when Elector has no relationship fields", () => {
