@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,6 +19,7 @@ import {
 const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
 const SESSION_KEY = `maagarim-pages-unlocked-${import.meta.env.VITE_BUILD_ID ?? "dev"}`;
 const AWAY_TTL_MS = 30 * 60 * 1000;
+const RESULTS_PER_PAGE = 100;
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
@@ -39,14 +40,21 @@ function searchHitDetailGroups(hit: SearchHit): SearchDetailGroup[] {
   ].filter((row): row is [string, string] => Boolean(row?.[1]));
   const contactRows: [string, string][] = [
     hit.phone ? [`טלפון ${hit.phoneYear ? `(${hit.phoneYear})` : ""}`.trim(), hit.phone] : undefined,
+    hit.phoneCandidates?.filter((phone) => phone !== hit.phone).length ? ["טלפונים נוספים במקור", hit.phoneCandidates.filter((phone) => phone !== hit.phone).join(" · ")] : undefined,
     hit.address ? [hit.addressYear === "2020" ? "כתובת מעודכנת (2020)" : hit.addressYear ? `כתובת (${hit.addressYear})` : "כתובת", hit.address] : undefined,
     hit.previousAddress ? [`כתובת ישנה (${hit.previousAddressYear ?? "2006"})`, hit.previousAddress] : undefined,
     hit.city ? ["יישוב", hit.city] : undefined,
     hit.cityCode ? ["קוד יישוב", hit.cityCode] : undefined,
   ].filter((row): row is [string, string] => Boolean(row?.[1]));
+  const relatedRows: [string, string][] = [
+    hit.fatherId ? ["מזהה אב", hit.fatherId] : undefined,
+    hit.motherId ? ["מזהה אם", hit.motherId] : undefined,
+    hit.spouseId ? ["מזהה בן/בת זוג", hit.spouseId] : undefined,
+  ].filter((row): row is [string, string] => Boolean(row?.[1]));
   return [
     { title: "פרטים אישיים", rows: personalRows },
     { title: "טלפון, כתובות ויישוב", rows: contactRows },
+    { title: "קשרים ומזהים קשורים", rows: relatedRows },
   ].filter((group) => group.rows.length > 0);
 }
 
@@ -65,6 +73,17 @@ function TextMatchModeSelector({ mode, onChange }: { mode: TextMatchMode; onChan
       </div>)}
     </div>
   </section>;
+}
+
+function ResultsPagination({ page, totalPages, totalResults, onPageChange }: { page: number; totalPages: number; totalResults: number; onPageChange: (page: number) => void }) {
+  if (totalPages <= 1) return null;
+  const start = page * RESULTS_PER_PAGE + 1;
+  const end = Math.min((page + 1) * RESULTS_PER_PAGE, totalResults);
+  return <nav className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/10 p-3" aria-label="דפדוף בתוצאות">
+    <button type="button" onClick={() => onPageChange(Math.max(0, page - 1))} disabled={page === 0} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-white/15 px-3 text-sm disabled:opacity-40"><ChevronRight size={16}/>הקודמות</button>
+    <span className="text-center text-sm text-white/65">עמוד {page + 1} מתוך {totalPages} · {start}–{end} מתוך {totalResults}</span>
+    <button type="button" onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-white/15 px-3 text-sm disabled:opacity-40">הבאות<ChevronLeft size={16}/></button>
+  </nav>;
 }
 
 function readSessionStart() {
@@ -106,6 +125,7 @@ export default function GitHubPagesHome() {
   const [facebookMode, setFacebookMode] = useState<"phone" | "name" | "facebook-id">("phone");
   const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [results, setResults] = useState<SearchHit[]>([]);
+  const [resultsPage, setResultsPage] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -120,6 +140,8 @@ export default function GitHubPagesHome() {
   const [familyError, setFamilyError] = useState("");
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
+  const resultsPageCount = Math.max(1, Math.ceil(results.length / RESULTS_PER_PAGE));
+  const visibleResults = results.slice(resultsPage * RESULTS_PER_PAGE, (resultsPage + 1) * RESULTS_PER_PAGE);
   const exportSearchResults = async () => {
     if (!results.length || isExporting) return;
     setIsExporting(true);
@@ -181,6 +203,7 @@ export default function GitHubPagesHome() {
     sessionStorage.removeItem(SESSION_KEY);
     setSessionStartedAt(null);
     setResults([]);
+    setResultsPage(0);
     setSearched(false);
     setLastQuery("");
     clearTree();
@@ -208,6 +231,7 @@ export default function GitHubPagesHome() {
     setFacebookIdQuery("");
     setFacebookMode("phone");
     setResults([]);
+    setResultsPage(0);
     setSearchError("");
     setSearched(false);
     clearTree();
@@ -217,13 +241,16 @@ export default function GitHubPagesHome() {
     if (isSearching) return;
     setSearchError("");
     setResults([]);
+    setResultsPage(0);
     setSearched(true);
     clearTree();
     setIsSearching(true);
     const sourceLabel = SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול";
     try {
       setLastQuery(`${sourceLabel} · ${description}`);
-      setResults(await search());
+      const found = await search();
+      setResults(found);
+      setResultsPage(0);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
@@ -234,6 +261,7 @@ export default function GitHubPagesHome() {
   const rejectSearch = (message: string) => {
     setSearchError(message);
     setResults([]);
+    setResultsPage(0);
     setSearched(false);
     clearTree();
   };
@@ -393,12 +421,12 @@ export default function GitHubPagesHome() {
 
       {searched && !isSearching && <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>{results.length > 0 && <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="search-export-format">סוג קובץ לייצוא</label><select id="search-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as SearchExportFormat)} className="min-h-10 rounded-xl border border-white/15 bg-[#17101f] px-3 text-xs text-white"><option value="csv">CSV — Excel / Sheets</option><option value="tsv">TSV — טבלה</option><option value="json">JSON — נתונים</option><option value="jsonl">JSONL — שורה לרשומה</option><option value="txt">TXT — טקסט</option><option value="html">HTML — דף טבלה</option><option value="xml">XML — נתונים</option><option value="xlsx">XLSX — Excel</option></select><button type="button" onClick={() => void exportSearchResults()} disabled={isExporting} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#f2a9d2] px-4 text-xs font-semibold text-[#30123e] hover:bg-[#f7c2e0] disabled:opacity-60">{isExporting ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}ייצא</button></div>}{results.length > 0 && <p className="w-full text-xs text-white/40">הקובץ עשוי לכלול מידע אישי — שמרו אותו במקום מוגן.</p>}{exportError && <p role="alert" className="w-full text-xs text-rose-200">{exportError}</p>}</div>
-        {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+        {results.length > 0 ? <><ResultsPagination page={resultsPage} totalPages={resultsPageCount} totalResults={results.length} onPageChange={setResultsPage}/><div className="grid gap-3 xl:grid-cols-2">{visibleResults.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">מקור: {hit.sourceNames?.join(" · ") || hit.source}</p><h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
           {(hit.fatherId || hit.motherId || hit.spouseId) && <div className="mt-4 border-t border-white/10 pt-3"><p className="mb-2 text-xs text-white/45">מזהים קשורים הרשומים במקור:</p><div className="flex flex-wrap gap-2">{hit.fatherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אב · {hit.fatherId}</span>}{hit.motherId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">אם · {hit.motherId}</span>}{hit.spouseId && <span className="rounded-lg border border-white/15 px-3 py-1.5 text-xs">בן/בת זוג · {hit.spouseId}</span>}</div></div>}
           {hit.nationalId && <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => void openFamily(hit)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#f2a9d2]/30 bg-[#f2a9d2]/10 px-4 text-sm font-semibold text-[#ffc1dc] transition hover:bg-[#f2a9d2]/20"><UsersRound size={16}/>פתיחת עץ משפחה</button><button type="button" onClick={() => void exportPersonWithFamily(hit)} disabled={Boolean(exportingFamilyId)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-60">{exportingFamilyId === normalizeId(hit.nationalId) ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}הורד אדם + עץ משפחה</button></div>}
-        </article>)}</div> : !searchError ? <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהפרטים הוקלדו נכון ונסה שוב.</div> : null}
+        </article>)}</div><ResultsPagination page={resultsPage} totalPages={resultsPageCount} totalResults={results.length} onPageChange={setResultsPage}/></> : !searchError ? <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהפרטים הוקלדו נכון ונסה שוב.</div> : null}
       </section>}
 
       {familyError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{familyError}</p>}
