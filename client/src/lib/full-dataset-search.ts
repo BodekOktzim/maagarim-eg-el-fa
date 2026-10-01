@@ -817,8 +817,15 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
 
 export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact", sourceFilter: SourceFilter = "all") {
   const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.location?.trim() || criteria.city?.trim() || criteria.address?.trim());
+  const hasName = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
+  if (sourceFilter === "facebook" && (!criteria.firstName?.trim() || !criteria.lastName?.trim())) {
+    throw new Error("יש למלא גם שם פרטי וגם שם משפחה בחיפוש Facebook.");
+  }
+  if (!hasName && (age || criteria.location?.trim() || criteria.city?.trim() || criteria.address?.trim())) {
+    throw new Error("יש להזין שם פרטי או שם משפחה לצד גיל או מיקום.");
+  }
   if (age) parseAgeRange(age);
   for (const value of [criteria.firstName, criteria.lastName, criteria.location, criteria.city, criteria.address]) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
