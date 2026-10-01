@@ -846,9 +846,6 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   const pointerGroups = Array.from(candidateGroups.values()).map((group) => Array.from(new Map(group.map((pointer) => [pointer.offset, pointer])).values()));
   const pointers = (pointerGroups.length > 1 ? intersectRowPointerGroups(pointerGroups) : pointerGroups[0] ?? [])
     .sort((left, right) => left.offset - right.offset);
-  if (pointers.length > 5_000) {
-    throw new Error("נמצאו יותר מדי התאמות. הוסיפו שם מלא, מיקום או גיל כדי לצמצם את החיפוש.");
-  }
   const hits = await fetchSourceRows(source, pointers, "");
   return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }

@@ -246,19 +246,14 @@ export default function GitHubPagesHome() {
     clearTree();
     setIsSearching(true);
     const sourceLabel = SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול";
-    let timeoutId = 0;
     try {
       setLastQuery(`${sourceLabel} · ${description}`);
-      const timeout = new Promise<never>((_, reject) => {
-        timeoutId = window.setTimeout(() => reject(new Error("החיפוש ארך יותר מדי זמן. הוסיפו שם מלא, מיקום או גיל ונסו שוב.")), 45_000);
-      });
-      const found = await Promise.race([search(), timeout]);
+      const found = await search();
       setResults(found);
       setResultsPage(0);
     } catch (error) {
       setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
-      window.clearTimeout(timeoutId);
       setIsSearching(false);
     }
   };
