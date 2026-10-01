@@ -261,7 +261,7 @@ function hash32(value: string) {
 
 async function getManifest(): Promise<IdManifest> {
   if (!idManifestPromise) {
-    idManifestPromise = fetch(`${SEEK_ROOT}/manifest.json`, { cache: "no-cache" }).then(async (response) => {
+    idManifestPromise = fetchWithRetry(`${SEEK_ROOT}/manifest.json`, { cache: "no-cache" }, "manifest.json").then(async (response) => {
       if (!response.ok) throw new Error("לא ניתן לטעון את אינדקס החיפוש מהאתר.");
       const data = await response.json() as IdManifest;
       if (data.recordBytes !== RECORD_BYTES || !Array.isArray(data.sources)) throw new Error("אינדקס החיפוש אינו תקין.");
@@ -271,9 +271,22 @@ async function getManifest(): Promise<IdManifest> {
   return idManifestPromise;
 }
 
+async function fetchWithRetry(target: string, init: RequestInit | undefined, label: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await fetch(target, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw new Error(`${label}: טעינת הנתונים נכשלה זמנית. נסו שוב בעוד כמה שניות.`, { cause: lastError });
+}
+
 async function getExtensionManifest(): Promise<ExtensionManifest> {
   if (!extensionManifestPromise) {
-    extensionManifestPromise = fetch(`${SEEK_ROOT}/extensions-manifest.json`, { cache: "no-cache" }).then(async (response) => {
+    extensionManifestPromise = fetchWithRetry(`${SEEK_ROOT}/extensions-manifest.json`, { cache: "no-cache" }, "extensions-manifest.json").then(async (response) => {
       if (!response.ok) throw new Error("אינדקסי החיפוש המורחבים עדיין אינם זמינים באתר.");
       const data = await response.json() as ExtensionManifest;
       if (!data.indexes || data.postRecordBytes !== 16 || data.edgeRecordBytes !== 20) throw new Error("מבנה אינדקס החיפוש המורחב אינו תקין.");
@@ -287,11 +300,11 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
   if (endInclusive < start) return new ArrayBuffer(0);
   const offline = await readOfflineUrlRange(url, start, endInclusive);
   if (offline) return offline;
-  const request = (target: string) => fetch(target, {
+  const request = (target: string) => fetchWithRetry(target, {
     headers: { Range: `bytes=${start}-${endInclusive}` },
     cache: "no-store",
     credentials: "omit",
-  });
+  }, label);
   let response = await request(url);
   if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
     response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
@@ -316,7 +329,7 @@ async function getSparse(file: string) {
     sparseCache.set(url, (async () => {
       const offline = await readOfflineFile(`index-seek/${file}`);
       if (offline) return offline;
-      const response = await fetch(url, { cache: "no-cache" });
+      const response = await fetchWithRetry(url, { cache: "no-cache" }, file);
       if (!response.ok) throw new Error(`לא ניתן לטעון את קובץ העזר ${file}.`);
       return response.arrayBuffer();
     })());
@@ -576,8 +589,8 @@ async function fetchSourceRows(source: IndexSource, records: RowPointer[], targe
   let batchStart = 0;
   for (const record of pending) {
     const recordEnd = record.offset + record.length;
-    const wouldExceedBytes = batch.length > 0 && recordEnd - batchStart > 1_048_576;
-    if (batch.length >= 128 || wouldExceedBytes) {
+    const wouldExceedBytes = batch.length > 0 && recordEnd - batchStart > 4_194_304;
+    if (batch.length >= 512 || wouldExceedBytes) {
       batches.push(batch);
       batch = [];
     }
@@ -586,7 +599,7 @@ async function fetchSourceRows(source: IndexSource, records: RowPointer[], targe
   }
   if (batch.length) batches.push(batch);
 
-  await mapLimit(batches, 8, async (group) => {
+  await mapLimit(batches, 4, async (group) => {
     const start = group[0].offset;
     const end = Math.max(...group.map((record) => record.offset + record.length)) - 1;
     const buffer = await getByteRange(`${MEDIA_ROOT}/datasets/${encodeURIComponent(source.file)}`, start, end, source.file);
