@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFacebookDetails, classifyUnifiedQuery, currentAgeFromBirthDate, formatBirthDate, intersectRowPointerGroups, keepSelectedSource, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
+import { appendItems, applyFacebookDetails, classifyUnifiedQuery, currentAgeFromBirthDate, formatBirthDate, intersectRowPointerGroups, keepSelectedSource, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -178,6 +178,14 @@ describe("unified AGRON/Elector result merging", () => {
       [{ offset: 50, length: 22 }, { offset: 70, length: 23 }],
     ])).toEqual([{ offset: 50, length: 22 }]);
     expect(intersectRowPointerGroups([])).toEqual([]);
+  });
+
+  it("appends large posting groups without exceeding the JavaScript argument stack", () => {
+    const items = Array.from({ length: 200_000 }, (_, index) => index);
+    const target: number[] = [];
+    expect(() => appendItems(target, items)).not.toThrow();
+    expect(target).toHaveLength(200_000);
+    expect(target[199_999]).toBe(199_999);
   });
 
   it("matches inclusive age ranges", () => {

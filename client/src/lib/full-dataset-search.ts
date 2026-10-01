@@ -722,6 +722,10 @@ export function intersectRowPointerGroups(groups: { offset: number; length: numb
   return Array.from(maps[0].values()).filter((pointer) => maps.slice(1).every((group) => group.has(pointer.offset)));
 }
 
+export function appendItems<T>(target: T[], items: readonly T[]) {
+  for (const item of items) target.push(item);
+}
+
 async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
   if ((criteria.address || criteria.location) && source.key === "facebook") return [] as SearchHit[];
@@ -801,7 +805,7 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     })));
   for (const group of postingGroups) {
     const current = candidateGroups.get(group.field) ?? [];
-    current.push(...group.records);
+    appendItems(current, group.records);
     candidateGroups.set(group.field, current);
   }
   const pointerGroups = Array.from(candidateGroups.values()).map((group) => Array.from(new Map(group.map((pointer) => [pointer.offset, pointer])).values()));
