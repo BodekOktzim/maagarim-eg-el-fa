@@ -242,6 +242,11 @@ function textValueMatches(value: string, term: string, matchMode: TextMatchMode)
     && queryWords.every((word, index) => withinOneEdit(word, valueWords[start + index])));
 }
 
+function nameValueMatches(value: string, term: string, matchMode: TextMatchMode) {
+  if (matchMode === "exact") return normalizeText(value) === normalizeText(term);
+  return textValueMatches(value, term, matchMode);
+}
+
 function bigrams(value: string) {
   const text = normalizeText(value);
   const output = new Set<string>();
@@ -714,7 +719,13 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
 function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   for (const field of ["firstName", "lastName", "city", "address"] as const) {
     const term = criteria[field]?.trim();
-    if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
+    if (term) {
+      const value = String(hit[field] ?? "");
+      const matches = field === "firstName" || field === "lastName"
+        ? nameValueMatches(value, term, matchMode)
+        : textValueMatches(value, term, matchMode);
+      if (!matches) return false;
+    }
   }
   const location = criteria.location?.trim();
   if (location && ![hit.city, hit.address].some((value) => value && textValueMatches(value, location, matchMode))) return false;

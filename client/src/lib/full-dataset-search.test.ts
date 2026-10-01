@@ -158,6 +158,14 @@ describe("unified AGRON/Elector result merging", () => {
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" }, "similar")).toBe(true);
   });
 
+  it("requires full first and last name equality in exact mode", () => {
+    const exact = hit({ firstName: "ירין", lastName: "מור", fullName: "ירין מור", city: "ירושלים" });
+    const prefixed = hit({ firstName: "שירין", lastName: "מור", fullName: "שירין מור", city: "ירושלים" });
+    expect(textMatchesWithinSource(exact, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "exact")).toBe(true);
+    expect(textMatchesWithinSource(prefixed, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "exact")).toBe(false);
+    expect(textMatchesWithinSource(prefixed, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "similar")).toBe(true);
+  });
+
   it("filters a text candidate by address after indexed name/city search", () => {
     const person = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", address: "רחוב הרצל 12" });
     expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הרצל" })).toHaveLength(1);
