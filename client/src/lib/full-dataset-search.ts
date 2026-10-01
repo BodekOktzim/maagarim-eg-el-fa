@@ -153,6 +153,7 @@ const idSearchCache = new Map<string, Promise<SearchHit[]>>();
 const idSourceSearchCache = new Map<string, Promise<SearchHit[]>>();
 const facebookPhoneCache = new Map<string, Promise<SearchHit[]>>();
 const rowCache = new Map<string, Promise<SearchHit | null>>();
+const byteRangeCache = new Map<string, Promise<ArrayBuffer>>();
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
@@ -300,17 +301,25 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
   if (endInclusive < start) return new ArrayBuffer(0);
   const offline = await readOfflineUrlRange(url, start, endInclusive);
   if (offline) return offline;
-  const request = (target: string) => fetchWithRetry(target, {
-    headers: { Range: `bytes=${start}-${endInclusive}` },
-    cache: "no-store",
-    credentials: "omit",
-  }, label);
-  let response = await request(url);
-  if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
-    response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
-  }
-  if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
-  return response.arrayBuffer();
+  const cacheKey = `${url}|${start}|${endInclusive}`;
+  const cached = byteRangeCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async () => {
+    const request = (target: string) => fetchWithRetry(target, {
+      headers: { Range: `bytes=${start}-${endInclusive}` },
+      cache: "force-cache",
+      credentials: "omit",
+    }, label);
+    let response = await request(url);
+    if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
+      response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
+    }
+    if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
+    return response.arrayBuffer();
+  })();
+  byteRangeCache.set(cacheKey, pending);
+  pending.catch(() => byteRangeCache.delete(cacheKey));
+  return pending;
 }
 
 function readSparse32(view: DataView, index: number) {
@@ -329,7 +338,7 @@ async function getSparse(file: string) {
     sparseCache.set(url, (async () => {
       const offline = await readOfflineFile(`index-seek/${file}`);
       if (offline) return offline;
-      const response = await fetchWithRetry(url, { cache: "no-cache" }, file);
+      const response = await fetchWithRetry(url, { cache: "force-cache" }, file);
       if (!response.ok) throw new Error(`לא ניתן לטעון את קובץ העזר ${file}.`);
       return response.arrayBuffer();
     })());
@@ -779,6 +788,10 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   if ((criteria.address || criteria.location) && source.key === "facebook") return [] as SearchHit[];
   const ageRange = parseAgeRange(criteria.age);
   const criteriaItems = criteriaForSource(criteria, source.key);
+  const sparseFiles = new Set(criteriaItems.map((criterion) => extensions.indexes[criterion.indexKey]?.sparseFile).filter(Boolean));
+  const ageSparseFile = ageRange && source.key === "agron2006" ? extensions.indexes["age-agron"]?.sparseFile : undefined;
+  if (ageSparseFile) sparseFiles.add(ageSparseFile);
+  await Promise.all(Array.from(sparseFiles, (file) => file ? getSparse(file) : Promise.resolve()));
   const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof TextSearchCriteria; count: number }[] = [];
   for (const criterion of criteriaItems) {
     const grams = bigrams(matchMode === "similar" ? normalizeFuzzyToken(criterion.value) : criterion.value);
@@ -839,8 +852,10 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
     const ageCandidates = selectedCandidates.filter((candidate) => candidate.field === "age");
     if (ageCandidates.length && !clauses.length) clauses.push({ items: ageCandidates, count: ageCandidates.reduce((sum, item) => sum + item.count, 0) });
-    clauses.sort((left, right) => left.count - right.count);
-    selectedCandidates = clauses[0]?.items ?? [];
+    // Read all exact clauses and intersect their row pointers before loading source rows.
+    // Choosing only the rarest clause caused common surnames/locations to download
+    // thousands of rows even when the complete name had one exact match.
+    selectedCandidates = clauses.flatMap((clause) => clause.items);
   }
 
   const candidateGroups = new Map<string, RowPointer[]>();
