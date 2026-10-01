@@ -567,6 +567,41 @@ async function fetchSourceRow(source: IndexSource, record: RowPointer, target: s
   return rowCache.get(cacheKey)!;
 }
 
+async function fetchSourceRows(source: IndexSource, records: RowPointer[], target: string) {
+  const uniqueRecords = Array.from(new Map(records.map((record) => [`${record.offset}:${record.length}`, record])).values())
+    .sort((left, right) => left.offset - right.offset);
+  const pending = uniqueRecords.filter((record) => !rowCache.has(`${source.key}:${record.offset}:${record.length}`));
+  const batches: RowPointer[][] = [];
+  let batch: RowPointer[] = [];
+  let batchStart = 0;
+  for (const record of pending) {
+    const recordEnd = record.offset + record.length;
+    const wouldExceedBytes = batch.length > 0 && recordEnd - batchStart > 1_048_576;
+    if (batch.length >= 128 || wouldExceedBytes) {
+      batches.push(batch);
+      batch = [];
+    }
+    if (!batch.length) batchStart = record.offset;
+    batch.push(record);
+  }
+  if (batch.length) batches.push(batch);
+
+  await mapLimit(batches, 8, async (group) => {
+    const start = group[0].offset;
+    const end = Math.max(...group.map((record) => record.offset + record.length)) - 1;
+    const buffer = await getByteRange(`${MEDIA_ROOT}/datasets/${encodeURIComponent(source.file)}`, start, end, source.file);
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    for (const record of group) {
+      const cacheKey = `${source.key}:${record.offset}:${record.length}`;
+      const relativeStart = record.offset - start;
+      const rowBuffer = buffer.slice(relativeStart, relativeStart + record.length);
+      rowCache.set(cacheKey, Promise.resolve(parseHit(source, decoder.decode(rowBuffer), target)));
+    }
+  });
+
+  return Promise.all(uniqueRecords.map((record) => fetchSourceRow(source, record, target)));
+}
+
 async function searchSourceById(source: IndexSource, normalized: string, blockRecords: number): Promise<SearchHit[]> {
   const cacheKey = `${source.key}:${normalized}`;
   if (!idSourceSearchCache.has(cacheKey)) {
@@ -811,7 +846,10 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   const pointerGroups = Array.from(candidateGroups.values()).map((group) => Array.from(new Map(group.map((pointer) => [pointer.offset, pointer])).values()));
   const pointers = (pointerGroups.length > 1 ? intersectRowPointerGroups(pointerGroups) : pointerGroups[0] ?? [])
     .sort((left, right) => left.offset - right.offset);
-  const hits = await mapLimit(pointers, 48, (pointer) => fetchSourceRow(source, pointer, ""));
+  if (pointers.length > 5_000) {
+    throw new Error("נמצאו יותר מדי התאמות. הוסיפו שם מלא, מיקום או גיל כדי לצמצם את החיפוש.");
+  }
+  const hits = await fetchSourceRows(source, pointers, "");
   return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }
 
