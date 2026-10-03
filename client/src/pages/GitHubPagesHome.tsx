@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
@@ -109,6 +109,8 @@ export default function GitHubPagesHome() {
   const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string }[]>([]);
   const [webSearchRoute, setWebSearchRoute] = useState("");
   const [isWebSearching, setIsWebSearching] = useState(false);
+  const webSearchStartedAtRef = useRef<number | null>(null);
+  const webResumeInFlightRef = useRef(false);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -122,6 +124,9 @@ export default function GitHubPagesHome() {
   const [familyCentralId, setFamilyCentralId] = useState("");
   const [isLoadingFamily, setIsLoadingFamily] = useState(false);
   const [familyError, setFamilyError] = useState("");
+  const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
+  const searchRunRef = useRef(0);
+  const resumeInFlightRef = useRef(false);
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
   const exportSearchResults = async () => {
@@ -217,8 +222,11 @@ export default function GitHubPagesHome() {
     clearTree();
   };
 
-  const executeSearch = async (description: string, search: () => Promise<SearchHit[]>) => {
-    if (isSearching) return;
+  const executeSearch = async (description: string, search: () => Promise<SearchHit[]>, force = false) => {
+    if (isSearching && !force) return;
+    const runId = ++searchRunRef.current;
+    activeSearchRef.current = { description, search, startedAt: Date.now() };
+    sessionStorage.setItem("maagarim-pending-search", JSON.stringify({ description, startedAt: Date.now() }));
     setSearchError("");
     setResults([]);
     setSearched(true);
@@ -227,13 +235,30 @@ export default function GitHubPagesHome() {
     const sourceLabel = SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול";
     try {
       setLastQuery(`${sourceLabel} · ${description}`);
-      setResults(await search());
+      const nextResults = await search();
+      if (runId === searchRunRef.current) setResults(nextResults);
     } catch (error) {
-      setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
+      if (runId === searchRunRef.current) setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
-      setIsSearching(false);
+      if (runId === searchRunRef.current) {
+        setIsSearching(false);
+        activeSearchRef.current = null;
+        sessionStorage.removeItem("maagarim-pending-search");
+      }
     }
   };
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || resumeInFlightRef.current) return;
+      const pending = activeSearchRef.current;
+      if (!pending || !isSearching || Date.now() - pending.startedAt < 3000) return;
+      resumeInFlightRef.current = true;
+      void executeSearch(pending.description, pending.search, true).finally(() => { resumeInFlightRef.current = false; });
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isSearching]);
 
   const rejectSearch = (message: string) => {
     setSearchError(message);
@@ -288,7 +313,13 @@ export default function GitHubPagesHome() {
 
   const runInternetPhoneSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    await performInternetPhoneSearch();
+  };
+
+  const performInternetPhoneSearch = async () => {
     if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
+    webSearchStartedAtRef.current = Date.now();
+    sessionStorage.setItem("maagarim-pending-web-phone-search", webPhoneQuery);
     setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError("");
     try {
       const base = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -299,8 +330,19 @@ export default function GitHubPagesHome() {
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
       setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct");
     } catch (error) { setSearchError(error instanceof Error ? error.message : "חיפוש האינטרנט נכשל."); }
-    finally { setIsWebSearching(false); }
+    finally { setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
   };
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible" || !isWebSearching || webResumeInFlightRef.current) return;
+      if (!webSearchStartedAtRef.current || Date.now() - webSearchStartedAtRef.current < 3000) return;
+      webResumeInFlightRef.current = true;
+      void performInternetPhoneSearch().finally(() => { webResumeInFlightRef.current = false; });
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [isWebSearching, webPhoneQuery]);
 
   const openFamily = async (hit: SearchHit) => {
     const digits = normalizeId(hit.nationalId);
