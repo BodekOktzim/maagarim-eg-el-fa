@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+assets
+search-index-full
+datasets
+index-seek
+scripts/__pycache__
+*.log
