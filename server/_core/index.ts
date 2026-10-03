@@ -40,6 +40,7 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/", (_req, res) => { res.status(200).json({ ok: true, service: "maagarim-web-search-api" }); });
   app.get("/healthz", (_req, res) => { res.status(200).json({ ok: true }); });
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   app.use("/api/uploads", requireUploadAccessCode);
@@ -116,4 +117,7 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer().catch((error) => {
+  console.error("Server startup failed", error);
+  process.exitCode = 1;
+});
