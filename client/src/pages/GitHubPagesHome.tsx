@@ -291,9 +291,11 @@ export default function GitHubPagesHome() {
     if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
     setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError("");
     try {
-      const base = import.meta.env.VITE_API_BASE_URL ?? "";
+      const base = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+      if (!base && window.location.hostname.endsWith("github.io")) throw new Error("חיפוש אינטרנטי פנימי דורש חיבור Backend. יש להגדיר VITE_API_BASE_URL לכתובת שרת החיפוש.");
       const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: webPhoneQuery }) });
-      const payload = await response.json() as { results?: typeof webSearchResults; route?: string; error?: string };
+      const contentType = response.headers.get("content-type") ?? "";
+      const payload = contentType.includes("application/json") ? await response.json() as { results?: typeof webSearchResults; route?: string; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
       setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct");
     } catch (error) { setSearchError(error instanceof Error ? error.message : "חיפוש האינטרנט נכשל."); }
