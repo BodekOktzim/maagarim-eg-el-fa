@@ -13,6 +13,7 @@ import { completeUpload, getUpload, initUpload, removeUpload, writeChunk } from 
 import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
+import { searchPublicPhone } from "../web-phone-search";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -42,6 +43,16 @@ async function startServer() {
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   app.use("/api/uploads", requireUploadAccessCode);
   app.use("/api/import-jobs", requireUploadAccessCode);
+  app.post("/api/web-phone-search", async (req, res) => {
+    try {
+      const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
+      if (!phone.trim()) { res.status(400).json({ error: "יש להזין מספר טלפון." }); return; }
+      res.json(await searchPublicPhone(phone));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "web_phone_search_failed";
+      res.status(message.includes("אינו מוגדר") ? 503 : 502).json({ error: message });
+    }
+  });
   app.post("/api/uploads/init", express.json({ limit: "32kb" }), async (req, res) => {
     try { const { fileName, size } = req.body as { fileName?: string; size?: number }; if (!fileName || size == null) { res.status(400).json({ error: "fileName and size are required" }); return; } res.status(201).json(await initUpload(fileName, size)); }
     catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "upload_init_failed" }); }

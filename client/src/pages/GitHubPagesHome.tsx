@@ -106,7 +106,9 @@ export default function GitHubPagesHome() {
   const [facebookMode, setFacebookMode] = useState<"phone" | "name" | "facebook-id">("phone");
   const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [webPhoneQuery, setWebPhoneQuery] = useState("");
-  const [webSearchLinks, setWebSearchLinks] = useState<{ label: string; url: string }[]>([]);
+  const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string }[]>([]);
+  const [webSearchRoute, setWebSearchRoute] = useState("");
+  const [isWebSearching, setIsWebSearching] = useState(false);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -284,29 +286,18 @@ export default function GitHubPagesHome() {
     await executeSearch(`תעודת זהות ${id}`, () => searchFullDatasetsByIdWithDetails(id, sourceFilter));
   };
 
-  const runInternetPhoneSearch = (event: FormEvent<HTMLFormElement>) => {
+  const runInternetPhoneSearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const digits = webPhoneQuery.replace(/\D/g, "");
-    if (digits.length < 7) {
-      setWebSearchLinks([]);
-      setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות.");
-      return;
-    }
-    const international = digits.startsWith("0") ? `+972${digits.slice(1)}` : digits.startsWith("972") ? `+${digits}` : `+${digits}`;
-    const local = digits.startsWith("972") ? `0${digits.slice(3)}` : digits;
-    const compact = local.replace(/^0(?=\d)/, "0");
-    const spaced = local.length === 10 ? `${local.slice(0, 3)} ${local.slice(3)}` : local;
-    const dashed = local.length === 10 ? `${local.slice(0, 3)}-${local.slice(3)}` : local;
-    const variants = Array.from(new Set([local, dashed, spaced, international, international.replace("+", "+ ")]));
-    const query = variants.map((value) => `"${value}"`).join(" OR ");
-    const encoded = encodeURIComponent(query);
-    setWebSearchLinks([
-      { label: "Google — כל הופעות המספר", url: `https://www.google.com/search?q=${encoded}` },
-      { label: "Bing — כל הופעות המספר", url: `https://www.bing.com/search?q=${encoded}` },
-      { label: "Google — מספר בפורמט ישראלי", url: `https://www.google.com/search?q=${encodeURIComponent(`"${compact}" ישראל`)}` },
-      { label: "Google — מספר ועסקים", url: `https://www.google.com/search?q=${encodeURIComponent(`"${local}" עסק OR שירות OR חברה`)}` },
-    ]);
-    setSearchError("");
+    if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
+    setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError("");
+    try {
+      const base = import.meta.env.VITE_API_BASE_URL ?? "";
+      const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: webPhoneQuery }) });
+      const payload = await response.json() as { results?: typeof webSearchResults; route?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
+      setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct");
+    } catch (error) { setSearchError(error instanceof Error ? error.message : "חיפוש האינטרנט נכשל."); }
+    finally { setIsWebSearching(false); }
   };
 
   const openFamily = async (hit: SearchHit) => {
@@ -384,9 +375,9 @@ export default function GitHubPagesHome() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <label htmlFor="internet-phone-search" className="sr-only">מספר טלפון לחיפוש באינטרנט</label>
               <input id="internet-phone-search" type="tel" inputMode="tel" autoComplete="off" value={webPhoneQuery} onChange={(event) => setWebPhoneQuery(event.target.value)} placeholder="050-1234567 או +972501234567" className="h-12 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-              <button type="submit" className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-7 font-semibold text-violet-50 transition hover:bg-violet-200/25"><Search size={17} className="ml-2"/>חפש מספר באינטרנט</button>
+              <button type="submit" disabled={isWebSearching} className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-7 font-semibold text-violet-50 transition hover:bg-violet-200/25 disabled:opacity-60">{isWebSearching ? <><LoaderCircle size={17} className="ml-2 animate-spin"/>מחפש ברשת…</> : <><Search size={17} className="ml-2"/>חפש מספר באינטרנט</>}</button>
             </div>
-            {webSearchLinks.length > 0 && <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2"><p className="text-xs text-white/50 sm:col-span-2">נוצרו שאילתות לכל הווריאציות של המספר. פתח מקור כדי לראות את התוצאות הציבוריות:</p>{webSearchLinks.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-violet-100 transition hover:bg-white/10">{link.label}</a>)}</div>}
+            {webSearchResults.length > 0 && <div className="space-y-2 border-t border-white/10 pt-3"><p className="text-xs text-white/50">נמצאו {webSearchResults.length} תוצאות ציבוריות{webSearchRoute ? ` · נתיב: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}:</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}</div>}
           </form>
 
           {sourceFilter !== "facebook" ? <>
