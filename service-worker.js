@@ -1,9 +1,9 @@
-/* OSINT Search release 56385f6210e20833c016bbaf81d0688de55c6972; user-approved, version-pinned offline shell. */
-const BUILD_ID = "56385f6210e20833c016bbaf81d0688de55c6972";
+/* OSINT Search release 1b04f5cb78de35e9f5cb65fc650e6a5158ffaff4; user-approved, version-pinned offline shell. */
+const BUILD_ID = "1b04f5cb78de35e9f5cb65fc650e6a5158ffaff4";
 const BASE_PATH = "/maagarim-eg-el-fa/";
 const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
 const CACHE_PREFIX = "osint-search-shell-";
-const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-C1XBTyH7.js","/maagarim-eg-el-fa/assets/index-D3_nZbkV.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
+const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-D-cJ7L7A.js","/maagarim-eg-el-fa/assets/index-D3_nZbkV.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
 const INDEX_URL = BASE_PATH + "index.html";
 const VERSION_PATH = BASE_PATH + "pwa-version.json";
 
