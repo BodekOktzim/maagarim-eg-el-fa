@@ -9,6 +9,8 @@ export type WebPhoneResult = {
   query: string;
 };
 
+const PROVIDER_TIMEOUT_MS = 8_000;
+
 function normalizePhone(input: string) {
   const digits = input.replace(/\D/g, "");
   if (digits.length < 7 || digits.length > 15) throw new Error("מספר הטלפון אינו תקין.");
@@ -42,7 +44,7 @@ async function tavilySearch(query: string, useTor: boolean): Promise<WebPhoneRes
     max_results: 10,
     include_answer: false,
     include_raw_content: false,
-  }, { timeout: 12_000, ...(agent ? { httpAgent: agent, httpsAgent: agent, proxy: false } : {}) });
+  }, { timeout: PROVIDER_TIMEOUT_MS, ...(agent ? { httpAgent: agent, httpsAgent: agent, proxy: false } : {}) });
   const results = Array.isArray(response.data?.results) ? response.data.results : [];
   return results.map((item: { title?: string; url?: string; content?: string }) => ({
     title: item.title || "ללא כותרת",

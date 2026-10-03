@@ -321,16 +321,21 @@ export default function GitHubPagesHome() {
     webSearchStartedAtRef.current = Date.now();
     sessionStorage.setItem("maagarim-pending-web-phone-search", webPhoneQuery);
     setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 35_000);
     try {
       const base = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
       if (!base && window.location.hostname.endsWith("github.io")) throw new Error("חיפוש אינטרנטי פנימי דורש חיבור Backend. יש להגדיר VITE_API_BASE_URL לכתובת שרת החיפוש.");
-      const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: webPhoneQuery }) });
+      const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: webPhoneQuery }), signal: controller.signal });
       const contentType = response.headers.get("content-type") ?? "";
       const payload = contentType.includes("application/json") ? await response.json() as { results?: typeof webSearchResults; route?: string; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
       setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct");
-    } catch (error) { setSearchError(error instanceof Error ? error.message : "חיפוש האינטרנט נכשל."); }
-    finally { setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
+    } catch (error) {
+      setSearchError(error instanceof DOMException && error.name === "AbortError"
+        ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
+        : error instanceof Error ? error.message : "חיפוש האינטרנט נכשל.");
+    } finally { window.clearTimeout(timeout); setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
   };
 
   useEffect(() => {
