@@ -43,6 +43,14 @@ async function startServer() {
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   app.use("/api/uploads", requireUploadAccessCode);
   app.use("/api/import-jobs", requireUploadAccessCode);
+  app.use("/api/web-phone-search", (req, res, next) => {
+    const allowedOrigin = process.env.WEB_SEARCH_ALLOWED_ORIGIN || "*";
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    next();
+  });
   app.post("/api/web-phone-search", async (req, res) => {
     try {
       const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
