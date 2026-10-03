@@ -70,15 +70,21 @@ export type FamilyTreePerson = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phoneCandidates?: string[];
   phoneYear?: string;
   address?: string;
   addressYear?: string;
   previousAddress?: string;
   previousAddressYear?: string;
   city?: string;
+  cityCode?: string;
   birthDate?: string;
   age?: string;
   maritalStatus?: string;
+  facebookId?: string;
+  fatherId?: string;
+  motherId?: string;
+  spouseId?: string;
   sourceNames?: string[];
 };
 
@@ -147,6 +153,7 @@ const idSearchCache = new Map<string, Promise<SearchHit[]>>();
 const idSourceSearchCache = new Map<string, Promise<SearchHit[]>>();
 const facebookPhoneCache = new Map<string, Promise<SearchHit[]>>();
 const rowCache = new Map<string, Promise<SearchHit | null>>();
+const byteRangeCache = new Map<string, Promise<ArrayBuffer>>();
 
 function digitsOnly(value: string) {
   return value.replace(/\D/g, "");
@@ -235,6 +242,11 @@ function textValueMatches(value: string, term: string, matchMode: TextMatchMode)
     && queryWords.every((word, index) => withinOneEdit(word, valueWords[start + index])));
 }
 
+function nameValueMatches(value: string, term: string, matchMode: TextMatchMode) {
+  if (matchMode === "exact") return normalizeText(value) === normalizeText(term);
+  return textValueMatches(value, term, matchMode);
+}
+
 function bigrams(value: string) {
   const text = normalizeText(value);
   const output = new Set<string>();
@@ -255,7 +267,7 @@ function hash32(value: string) {
 
 async function getManifest(): Promise<IdManifest> {
   if (!idManifestPromise) {
-    idManifestPromise = fetch(`${SEEK_ROOT}/manifest.json`, { cache: "no-cache" }).then(async (response) => {
+    idManifestPromise = fetchWithRetry(`${SEEK_ROOT}/manifest.json`, { cache: "no-cache" }, "manifest.json").then(async (response) => {
       if (!response.ok) throw new Error("לא ניתן לטעון את אינדקס החיפוש מהאתר.");
       const data = await response.json() as IdManifest;
       if (data.recordBytes !== RECORD_BYTES || !Array.isArray(data.sources)) throw new Error("אינדקס החיפוש אינו תקין.");
@@ -265,9 +277,22 @@ async function getManifest(): Promise<IdManifest> {
   return idManifestPromise;
 }
 
+async function fetchWithRetry(target: string, init: RequestInit | undefined, label: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await fetch(target, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw new Error(`${label}: טעינת הנתונים נכשלה זמנית. נסו שוב בעוד כמה שניות.`, { cause: lastError });
+}
+
 async function getExtensionManifest(): Promise<ExtensionManifest> {
   if (!extensionManifestPromise) {
-    extensionManifestPromise = fetch(`${SEEK_ROOT}/extensions-manifest.json`, { cache: "no-cache" }).then(async (response) => {
+    extensionManifestPromise = fetchWithRetry(`${SEEK_ROOT}/extensions-manifest.json`, { cache: "no-cache" }, "extensions-manifest.json").then(async (response) => {
       if (!response.ok) throw new Error("אינדקסי החיפוש המורחבים עדיין אינם זמינים באתר.");
       const data = await response.json() as ExtensionManifest;
       if (!data.indexes || data.postRecordBytes !== 16 || data.edgeRecordBytes !== 20) throw new Error("מבנה אינדקס החיפוש המורחב אינו תקין.");
@@ -281,17 +306,25 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
   if (endInclusive < start) return new ArrayBuffer(0);
   const offline = await readOfflineUrlRange(url, start, endInclusive);
   if (offline) return offline;
-  const request = (target: string) => fetch(target, {
-    headers: { Range: `bytes=${start}-${endInclusive}` },
-    cache: "no-store",
-    credentials: "omit",
-  });
-  let response = await request(url);
-  if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
-    response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
-  }
-  if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
-  return response.arrayBuffer();
+  const cacheKey = `${url}|${start}|${endInclusive}`;
+  const cached = byteRangeCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async () => {
+    const request = (target: string) => fetchWithRetry(target, {
+      headers: { Range: `bytes=${start}-${endInclusive}` },
+      cache: "force-cache",
+      credentials: "omit",
+    }, label);
+    let response = await request(url);
+    if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
+      response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
+    }
+    if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
+    return response.arrayBuffer();
+  })();
+  byteRangeCache.set(cacheKey, pending);
+  pending.catch(() => byteRangeCache.delete(cacheKey));
+  return pending;
 }
 
 function readSparse32(view: DataView, index: number) {
@@ -310,7 +343,7 @@ async function getSparse(file: string) {
     sparseCache.set(url, (async () => {
       const offline = await readOfflineFile(`index-seek/${file}`);
       if (offline) return offline;
-      const response = await fetch(url, { cache: "no-cache" });
+      const response = await fetchWithRetry(url, { cache: "force-cache" }, file);
       if (!response.ok) throw new Error(`לא ניתן לטעון את קובץ העזר ${file}.`);
       return response.arrayBuffer();
     })());
@@ -343,30 +376,30 @@ async function findSparseRange(meta: ExtensionIndex, target: number | bigint, ke
   return { startOrdinal, endOrdinal, totalRecords };
 }
 
-async function readPostingGroup(meta: ExtensionIndex, key: number, cap: number, allowPartial = false) {
+async function readPostingGroup(meta: ExtensionIndex, key: number) {
   const files = meta.indexFiles ?? [meta.indexFile];
   const sparseFiles = meta.sparseFiles ?? [meta.sparseFile];
   const bytes = meta.indexBytesByFile ?? [meta.indexBytes];
   const records: RowPointer[] = [];
-  let totalCount = 0;
   for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
     const file = files[fileIndex];
     const range = await findSparseRange(meta, key, 4, 16, sparseFiles[fileIndex], bytes[fileIndex]);
     const count = range.endOrdinal - range.startOrdinal;
     if (count <= 0) continue;
-    if (totalCount + count > cap && !allowPartial) throw new Error("נמצאו יותר מדי מועמדים לפי מפתח זה. הוסיפו שם משפחה, יישוב או גיל כדי לצמצם את החיפוש.");
-    const sampledEnd = allowPartial ? Math.min(range.endOrdinal, range.startOrdinal + cap - totalCount) : range.endOrdinal;
-    const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${file}`, range.startOrdinal * 16, sampledEnd * 16 - 1, file);
-    if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${file}.`);
-    const view = new DataView(buffer);
-    for (let byte = 0; byte < buffer.byteLength; byte += 16) {
-      if (view.getUint32(byte, true) !== key) continue;
-      records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+    const chunkRecords = 65_536;
+    for (let consumed = 0; consumed < count; consumed += chunkRecords) {
+      const chunkCount = Math.min(chunkRecords, count - consumed);
+      const chunkStart = range.startOrdinal + consumed;
+      const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${file}`, chunkStart * 16, (chunkStart + chunkCount) * 16 - 1, file);
+      if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${file}.`);
+      const view = new DataView(buffer);
+      for (let byte = 0; byte < buffer.byteLength; byte += 16) {
+        if (view.getUint32(byte, true) !== key) continue;
+        records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+      }
     }
-    totalCount += count;
-    if (allowPartial && totalCount >= cap) break;
   }
-  return { count: totalCount, records };
+  return { count: records.length, records };
 }
 
 async function readFacebookIdGroup(meta: ExtensionIndex, target: bigint, cap: number) {
@@ -561,6 +594,41 @@ async function fetchSourceRow(source: IndexSource, record: RowPointer, target: s
   return rowCache.get(cacheKey)!;
 }
 
+async function fetchSourceRows(source: IndexSource, records: RowPointer[], target: string) {
+  const uniqueRecords = Array.from(new Map(records.map((record) => [`${record.offset}:${record.length}`, record])).values())
+    .sort((left, right) => left.offset - right.offset);
+  const pending = uniqueRecords.filter((record) => !rowCache.has(`${source.key}:${record.offset}:${record.length}`));
+  const batches: RowPointer[][] = [];
+  let batch: RowPointer[] = [];
+  let batchStart = 0;
+  for (const record of pending) {
+    const recordEnd = record.offset + record.length;
+    const wouldExceedBytes = batch.length > 0 && recordEnd - batchStart > 4_194_304;
+    if (batch.length >= 512 || wouldExceedBytes) {
+      batches.push(batch);
+      batch = [];
+    }
+    if (!batch.length) batchStart = record.offset;
+    batch.push(record);
+  }
+  if (batch.length) batches.push(batch);
+
+  await mapLimit(batches, 4, async (group) => {
+    const start = group[0].offset;
+    const end = Math.max(...group.map((record) => record.offset + record.length)) - 1;
+    const buffer = await getByteRange(`${MEDIA_ROOT}/datasets/${encodeURIComponent(source.file)}`, start, end, source.file);
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    for (const record of group) {
+      const cacheKey = `${source.key}:${record.offset}:${record.length}`;
+      const relativeStart = record.offset - start;
+      const rowBuffer = buffer.slice(relativeStart, relativeStart + record.length);
+      rowCache.set(cacheKey, Promise.resolve(parseHit(source, decoder.decode(rowBuffer), target)));
+    }
+  });
+
+  return Promise.all(uniqueRecords.map((record) => fetchSourceRow(source, record, target)));
+}
+
 async function searchSourceById(source: IndexSource, normalized: string, blockRecords: number): Promise<SearchHit[]> {
   const cacheKey = `${source.key}:${normalized}`;
   if (!idSourceSearchCache.has(cacheKey)) {
@@ -592,7 +660,6 @@ async function searchSourceById(source: IndexSource, normalized: string, blockRe
       for (let byte = 0; byte < buffer.byteLength; byte += RECORD_BYTES) {
         if (view.getUint32(byte, true) !== targetId) continue;
         pointers.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
-        if (pointers.length >= 40) break;
       }
       const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, normalized)));
       return hits.filter((hit): hit is SearchHit => Boolean(hit));
@@ -652,7 +719,13 @@ function criteriaForSource(criteria: TextSearchCriteria, sourceKey: SourceKey) {
 function textMatches(hit: SearchHit, criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact") {
   for (const field of ["firstName", "lastName", "city", "address"] as const) {
     const term = criteria[field]?.trim();
-    if (term && !textValueMatches(String(hit[field] ?? ""), term, matchMode)) return false;
+    if (term) {
+      const value = String(hit[field] ?? "");
+      const matches = field === "firstName" || field === "lastName"
+        ? nameValueMatches(value, term, matchMode)
+        : textValueMatches(value, term, matchMode);
+      if (!matches) return false;
+    }
   }
   const location = criteria.location?.trim();
   if (location && ![hit.city, hit.address].some((value) => value && textValueMatches(value, location, matchMode))) return false;
@@ -684,16 +757,14 @@ export function mergeTextSearchHits(hits: SearchHit[], criteria: TextSearchCrite
   groups.forEach((group, key) => {
     const nameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, matchMode));
     const exactNameAndAgeMatch = group.some((hit) => textMatches(hit, withoutCity, "exact"));
-    // A person can have different cities in AGRON (2006) and Elector (2020).
-    // Match the requested city against either historical source before merging.
-    const cityMatch = !criteria.city?.trim() || group.some((hit) => textMatches(hit, { city: criteria.city }, matchMode));
-    const exactCityMatch = !criteria.city?.trim() || group.some((hit) => textMatches(hit, { city: criteria.city }, "exact"));
+    const cityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, matchMode));
+    const exactCityMatch = !criteria.city?.trim() || group.some((hit) => hit.sourceKey === "agron2006" && textMatches(hit, { city: criteria.city }, "exact"));
     const locationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, matchMode));
     const exactLocationMatch = !criteria.location?.trim() || group.some((hit) => textMatches(hit, { location: criteria.location }, "exact"));
     if (nameAndAgeMatch && cityMatch && locationMatch) eligible.push({ key, hits: group, approximate: !exactNameAndAgeMatch || !exactCityMatch || !exactLocationMatch });
   });
   const approximateKeys = new Set(eligible.filter((group) => group.approximate).map((group) => group.key));
-  const merged = mergeHits(eligible.flatMap((group) => group.hits)).slice(0, 250);
+  const merged = mergeHits(eligible.flatMap((group) => group.hits));
   return merged.map((hit) => {
     const key = displayId(hit.nationalId) ?? hit.facebookId ?? `${hit.sourceKey}:${hit.fullName}:${hit.phone ?? ""}`;
     return approximateKeys.has(key) ? { ...hit, confidence: "approximate-text-match" as const } : hit;
@@ -713,11 +784,25 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
   return results;
 }
 
+export function intersectRowPointerGroups(groups: { offset: number; length: number }[][]) {
+  if (!groups.length) return [] as { offset: number; length: number }[];
+  const maps = groups.map((group) => new Map(group.map((pointer) => [pointer.offset, pointer]))).sort((left, right) => left.size - right.size);
+  return Array.from(maps[0].values()).filter((pointer) => maps.slice(1).every((group) => group.has(pointer.offset)));
+}
+
+export function appendItems<T>(target: T[], items: readonly T[]) {
+  for (const item of items) target.push(item);
+}
+
 async function searchTextInSource(source: IndexSource, criteria: TextSearchCriteria, extensions: ExtensionManifest, matchMode: TextMatchMode) {
   if (criteria.age && source.key !== "agron2006") return [] as SearchHit[];
   if ((criteria.address || criteria.location) && source.key === "facebook") return [] as SearchHit[];
   const ageRange = parseAgeRange(criteria.age);
   const criteriaItems = criteriaForSource(criteria, source.key);
+  const sparseFiles = new Set(criteriaItems.map((criterion) => extensions.indexes[criterion.indexKey]?.sparseFile).filter(Boolean));
+  const ageSparseFile = ageRange && source.key === "agron2006" ? extensions.indexes["age-agron"]?.sparseFile : undefined;
+  if (ageSparseFile) sparseFiles.add(ageSparseFile);
+  await Promise.all(Array.from(sparseFiles, (file) => file ? getSparse(file) : Promise.resolve()));
   const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof TextSearchCriteria; count: number }[] = [];
   for (const criterion of criteriaItems) {
     const grams = bigrams(matchMode === "similar" ? normalizeFuzzyToken(criterion.value) : criterion.value);
@@ -742,7 +827,7 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     }
   }
   if (!candidates.length) return [] as SearchHit[];
-  const selectedCandidates = (["firstName", "lastName", "city", "address", "location", "age"] as const).flatMap((field) => {
+  let selectedCandidates = (["firstName", "lastName", "city", "address", "location", "age"] as const).flatMap((field) => {
     const fieldCandidates = candidates.filter((candidate) => candidate.field === field).sort((left, right) => left.count - right.count);
     if (field === "location") {
       const byIndex = new Map<string, typeof fieldCandidates>();
@@ -752,34 +837,69 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
         list.push(candidate);
         byIndex.set(indexKey, list);
       }
-      return Array.from(byIndex.values()).flatMap((items) => items.slice(0, matchMode === "similar" ? 4 : 1));
+      return Array.from(byIndex.values()).flatMap((items) => matchMode === "similar" ? items : items.slice(0, 1));
     }
-    return fieldCandidates.slice(0, matchMode === "similar" ? (field === "age" ? 120 : 4) : (field === "age" ? 120 : 1));
+    if (matchMode === "similar") return field === "age" ? fieldCandidates : fieldCandidates;
+    return fieldCandidates.slice(0, field === "age" ? 120 : 1);
   });
-  const pointerScores = new Map<number, { pointer: RowPointer; score: number; order: number }>();
-  const postingGroups = await Promise.all(selectedCandidates.map((candidate) =>
-    readPostingGroup(candidate.meta, candidate.key, matchMode === "similar" ? 10_000 : 300_000, true)));
-  for (let order = 0; order < postingGroups.length; order += 1) {
-    const group = postingGroups[order];
-    for (const pointer of group.records) {
-      const current = pointerScores.get(pointer.offset);
-      if (current) current.score += 1;
-      else pointerScores.set(pointer.offset, { pointer, score: 1, order });
+
+  if (matchMode === "exact") {
+    const clauses: { items: typeof selectedCandidates; count: number }[] = [];
+    for (const field of ["firstName", "lastName", "city", "address"] as const) {
+      const rarest = selectedCandidates.filter((candidate) => candidate.field === field).sort((left, right) => left.count - right.count)[0];
+      if (rarest) clauses.push({ items: [rarest], count: rarest.count });
     }
+    const locationCandidates = selectedCandidates.filter((candidate) => candidate.field === "location");
+    if (locationCandidates.length) {
+      const byIndex = new Map<string, typeof locationCandidates>();
+      for (const candidate of locationCandidates) {
+        const indexKey = `${candidate.meta.source}:${candidate.meta.indexFiles?.join(",") ?? candidate.meta.indexFile}`;
+        const list = byIndex.get(indexKey) ?? [];
+        list.push(candidate);
+        byIndex.set(indexKey, list);
+      }
+      const alternatives = Array.from(byIndex.values()).map((items) => items.sort((left, right) => left.count - right.count)[0]);
+      clauses.push({ items: alternatives, count: alternatives.reduce((sum, item) => sum + item.count, 0) });
+    }
+    const ageCandidates = selectedCandidates.filter((candidate) => candidate.field === "age");
+    if (ageCandidates.length && !clauses.length) clauses.push({ items: ageCandidates, count: ageCandidates.reduce((sum, item) => sum + item.count, 0) });
+    // Read all exact clauses and intersect their row pointers before loading source rows.
+    // Choosing only the rarest clause caused common surnames/locations to download
+    // thousands of rows even when the complete name had one exact match.
+    selectedCandidates = clauses.flatMap((clause) => clause.items);
   }
-  const rowLimit = matchMode === "similar" ? 1_000 : 400;
-  const pointers = Array.from(pointerScores.values())
-    .sort((left, right) => right.score - left.score || left.order - right.order)
-    .slice(0, rowLimit)
-    .map(({ pointer }) => pointer);
-  const hits = await mapLimit(pointers, 16, (pointer) => fetchSourceRow(source, pointer, ""));
+
+  const candidateGroups = new Map<string, RowPointer[]>();
+  const hasTextCandidates = selectedCandidates.some((candidate) => candidate.field !== "age");
+  const postingGroups = await Promise.all(selectedCandidates
+    .filter((candidate) => !(hasTextCandidates && candidate.field === "age"))
+    .map(async (candidate) => ({
+      field: candidate.field,
+      records: (await readPostingGroup(candidate.meta, candidate.key)).records,
+    })));
+  for (const group of postingGroups) {
+    const current = candidateGroups.get(group.field) ?? [];
+    appendItems(current, group.records);
+    candidateGroups.set(group.field, current);
+  }
+  const pointerGroups = Array.from(candidateGroups.values()).map((group) => Array.from(new Map(group.map((pointer) => [pointer.offset, pointer])).values()));
+  const pointers = (pointerGroups.length > 1 ? intersectRowPointerGroups(pointerGroups) : pointerGroups[0] ?? [])
+    .sort((left, right) => left.offset - right.offset);
+  const hits = await fetchSourceRows(source, pointers, "");
   return hits.filter((hit): hit is SearchHit => Boolean(hit && textMatchesWithinSource(hit, criteria, matchMode)));
 }
 
 export async function searchFullDatasetsByText(criteria: TextSearchCriteria, matchMode: TextMatchMode = "exact", sourceFilter: SourceFilter = "all") {
   const hasText = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim() || criteria.location?.trim() || criteria.city?.trim() || criteria.address?.trim());
+  const hasName = Boolean(criteria.firstName?.trim() || criteria.lastName?.trim());
   const age = criteria.age?.trim() ?? "";
   if (!hasText && !age) throw new Error("יש למלא לפחות שדה חיפוש אחד.");
+  if (sourceFilter === "facebook" && (!criteria.firstName?.trim() || !criteria.lastName?.trim())) {
+    throw new Error("יש למלא גם שם פרטי וגם שם משפחה בחיפוש Facebook.");
+  }
+  if (!hasName && (age || criteria.location?.trim() || criteria.city?.trim() || criteria.address?.trim())) {
+    throw new Error("יש להזין שם פרטי או שם משפחה לצד גיל או מיקום.");
+  }
   if (age) parseAgeRange(age);
   for (const value of [criteria.firstName, criteria.lastName, criteria.location, criteria.city, criteria.address]) {
     if (value?.trim() && normalizeText(value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
@@ -823,13 +943,8 @@ export async function searchUnifiedQuery(input: string, sourceFilter: SourceFilt
     ]
     : [
       searchFullDatasetsByText({ firstName: words[0], lastName: words.slice(1).join(" ") }, matchMode, sourceFilter),
-      searchFullDatasetsByText({ firstName: words[0], lastName: words[1] }, matchMode, sourceFilter),
       searchFullDatasetsByText({ city: query }, matchMode, sourceFilter),
       searchFullDatasetsByText({ address: query }, matchMode, sourceFilter),
-      ...(words.length > 2 ? [
-        searchFullDatasetsByText({ firstName: words[0], lastName: words[1], city: words.slice(2).join(" ") }, matchMode, sourceFilter),
-        searchFullDatasetsByText({ city: words.slice(2).join(" ") }, matchMode, sourceFilter),
-      ] : []),
     ];
   return mergeHits((await Promise.all(searches)).flat());
 }
@@ -866,8 +981,8 @@ async function searchFacebookByPhone(input: string) {
         const source = manifest.sources.find((item) => item.key === "facebook");
         const meta = extensions.indexes["phone-facebook-candidate"];
         if (!source || !meta) return [] as SearchHit[];
-        const group = await readPostingGroup(meta, hash32(phone), 20_000);
-        const pointers = group.records.slice(0, 500);
+        const group = await readPostingGroup(meta, hash32(phone));
+        const pointers = group.records;
         const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
         return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone)));
       } catch {
@@ -893,8 +1008,8 @@ export async function searchFullDatasetsByPhone(input: string, sourceFilter: Sou
     const key = source.key === "agron2006" ? "phone-agron" : source.key === "elector" ? "phone-elector" : "phone-facebook-candidate";
     const meta = extensions.indexes[key];
     if (!meta) return [] as SearchHit[];
-    const group = await readPostingGroup(meta, hash32(phone), 20_000);
-    const pointers = group.records.slice(0, 500);
+    const group = await readPostingGroup(meta, hash32(phone));
+    const pointers = group.records;
     const hits = await Promise.all(pointers.map((pointer) => fetchSourceRow(source, pointer, "")));
     return hits.filter((hit): hit is SearchHit => Boolean(hit && phoneMatches(hit, phone))).map((hit) => ({ ...hit, confidence: "phone-match" as const }));
   }));
@@ -939,7 +1054,9 @@ export function toFamilyTreePerson(id: string, hits: SearchHit[]): FamilyTreePer
     id, nationalId: primary.nationalId, fullName: primary.fullName, firstName: primary.firstName, lastName: primary.lastName,
     phone: primary.phone, phoneYear: primary.phoneYear, address: primary.address, addressYear: primary.addressYear,
     previousAddress: primary.previousAddress, previousAddressYear: primary.previousAddressYear,
-    city: primary.city, birthDate: primary.birthDate, age: primary.age, maritalStatus: primary.maritalStatus,
+    phoneCandidates: primary.phoneCandidates, city: primary.city, cityCode: primary.cityCode,
+    birthDate: primary.birthDate, age: primary.age, maritalStatus: primary.maritalStatus, facebookId: primary.facebookId,
+    fatherId: primary.fatherId, motherId: primary.motherId, spouseId: primary.spouseId,
     sourceNames: primary.sourceNames ?? Array.from(new Set(hits.map((hit) => hit.source))),
   };
 }

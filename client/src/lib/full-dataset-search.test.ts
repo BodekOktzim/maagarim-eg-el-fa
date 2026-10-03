@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyFacebookDetails, classifyUnifiedQuery, currentAgeFromBirthDate, formatBirthDate, keepSelectedSource, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
+import { appendItems, applyFacebookDetails, classifyUnifiedQuery, currentAgeFromBirthDate, formatBirthDate, intersectRowPointerGroups, keepSelectedSource, mergeHits, mergePhoneHits, mergeTextSearchHits, parseAgeRange, parseFacebookHit, searchFullDatasetsByText, textMatchesWithinSource, toFamilyTreePerson, type SearchHit } from "./full-dataset-search";
 
 const hit = (overrides: Partial<SearchHit>): SearchHit => ({
   source: "test",
@@ -98,7 +98,7 @@ describe("unified AGRON/Elector result merging", () => {
 
   it("shows the same merged details when a person is selected in the family tree", () => {
     const person = toFamilyTreePerson("012345678", [
-      hit({ source: "AGRON 2006", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", phone: "08-1234567", address: "רחוב ישן 10", addressYear: "2006", birthDate: "26/02/1981", maritalStatus: "נשוי" }),
+      hit({ source: "AGRON 2006", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", phone: "08-1234567", phoneCandidates: ["08-1234567", "08-7654321"], address: "רחוב ישן 10", addressYear: "2006", birthDate: "26/02/1981", maritalStatus: "נשוי", fatherId: "000000001", motherId: "000000002", spouseId: "000000003", cityCode: "3000", facebookId: "123456" }),
       hit({ source: "Elector", sourceKey: "elector", firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", phone: "08-7654321", address: "רחוב חדש 13", addressYear: "2020" }),
     ]);
     expect(person).toMatchObject({
@@ -111,6 +111,12 @@ describe("unified AGRON/Elector result merging", () => {
       previousAddressYear: "2006",
       birthDate: "26/02/1981",
       maritalStatus: "נשוי",
+      fatherId: "000000001",
+      motherId: "000000002",
+      spouseId: "000000003",
+      cityCode: "3000",
+      facebookId: "123456",
+      phoneCandidates: ["08-1234567", "08-7654321"],
     });
   });
 
@@ -121,7 +127,7 @@ describe("unified AGRON/Elector result merging", () => {
     });
     const elector = hit({
       source: "Elector", sourceKey: "elector", firstName: "מיכל", lastName: "כהן",
-      fullName: "מיכל כהן", city: "תל אביב", address: "הסביון 2, תל אביב",
+      fullName: "מיכל כהן", city: undefined, address: "הסביון 2, מטולה",
     });
     const facebook = hit({
       source: "Facebook", sourceKey: "facebook", firstName: "מיכל", lastName: "כהן",
@@ -133,11 +139,10 @@ describe("unified AGRON/Elector result merging", () => {
     const [merged] = mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "מטולה" });
     expect(merged).toMatchObject({
       source: "מאגר מאוחד",
-      address: "הסביון 2, תל אביב",
+      address: "הסביון 2, מטולה",
       addressYear: "2020",
-      city: "תל אביב",
+      city: "מטולה",
     });
-    expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "תל אביב" })).toHaveLength(1);
     expect(mergeTextSearchHits([agron, elector], { lastName: "כהן", city: "חיפה" })).toHaveLength(0);
   });
 
@@ -153,10 +158,42 @@ describe("unified AGRON/Elector result merging", () => {
     expect(textMatchesWithinSource(cityRecord, { city: "מטולא" }, "similar")).toBe(true);
   });
 
+  it("requires full first and last name equality in exact mode", () => {
+    const exact = hit({ firstName: "ירין", lastName: "מור", fullName: "ירין מור", city: "ירושלים" });
+    const prefixed = hit({ firstName: "שירין", lastName: "מור", fullName: "שירין מור", city: "ירושלים" });
+    expect(textMatchesWithinSource(exact, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "exact")).toBe(true);
+    expect(textMatchesWithinSource(prefixed, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "exact")).toBe(false);
+    expect(textMatchesWithinSource(prefixed, { firstName: "ירין", lastName: "מור", location: "ירושלים" }, "similar")).toBe(true);
+  });
+
   it("filters a text candidate by address after indexed name/city search", () => {
     const person = hit({ firstName: "דוד", lastName: "כהן", fullName: "דוד כהן", address: "רחוב הרצל 12" });
     expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הרצל" })).toHaveLength(1);
     expect(mergeTextSearchHits([person], { lastName: "כהן", address: "הנביאים" })).toHaveLength(0);
+  });
+
+  it("returns all text matches instead of truncating after 250 results", () => {
+    const candidates = Array.from({ length: 325 }, (_, index) => hit({
+      nationalId: String(100000000 + index), firstName: "שיראל", lastName: "ביטון", fullName: "שיראל ביטון",
+    }));
+    expect(mergeTextSearchHits(candidates, { firstName: "שיראל", lastName: "ביטון" })).toHaveLength(325);
+  });
+
+  it("intersects postings for separate search criteria without dropping shared rows", () => {
+    expect(intersectRowPointerGroups([
+      [{ offset: 10, length: 20 }, { offset: 30, length: 21 }, { offset: 50, length: 22 }],
+      [{ offset: 30, length: 21 }, { offset: 50, length: 22 }],
+      [{ offset: 50, length: 22 }, { offset: 70, length: 23 }],
+    ])).toEqual([{ offset: 50, length: 22 }]);
+    expect(intersectRowPointerGroups([])).toEqual([]);
+  });
+
+  it("appends large posting groups without exceeding the JavaScript argument stack", () => {
+    const items = Array.from({ length: 200_000 }, (_, index) => index);
+    const target: number[] = [];
+    expect(() => appendItems(target, items)).not.toThrow();
+    expect(target).toHaveLength(200_000);
+    expect(target[199_999]).toBe(199_999);
   });
 
   it("matches inclusive age ranges", () => {

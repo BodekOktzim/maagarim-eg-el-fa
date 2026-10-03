@@ -10,15 +10,21 @@ export type TreePerson = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  phoneCandidates?: string[];
   phoneYear?: string;
   address?: string;
   addressYear?: string;
   previousAddress?: string;
   previousAddressYear?: string;
   city?: string;
+  cityCode?: string;
   age?: string;
   birthDate?: string;
   maritalStatus?: string;
+  facebookId?: string;
+  fatherId?: string;
+  motherId?: string;
+  spouseId?: string;
   sourceNames?: string[];
 };
 
@@ -91,15 +97,21 @@ function EmptyNode({ label }: { label: string }) {
 function DetailPanel({ person, onClose, onCenter }: { person: TreePerson; onClose: () => void; onCenter: () => void }) {
   const personalRows = [
     ["תעודת זהות", person.nationalId],
+    ["מזהה Facebook", person.facebookId],
     ["תאריך לידה", person.birthDate],
     ["גיל במקור", person.age],
     ["מצב אישי", person.maritalStatus],
+    ["מזהה אב", person.fatherId],
+    ["מזהה אם", person.motherId],
+    ["מזהה בן/בת זוג", person.spouseId],
   ].filter((row): row is [string, string] => Boolean(row[1]));
   const contactRows = [
     [person.phoneYear ? `טלפון (${person.phoneYear})` : "טלפון", person.phone],
+    ["טלפונים נוספים במקור", person.phoneCandidates?.filter((phone) => phone !== person.phone).join(" · ")],
     [person.addressYear === "2020" ? "כתובת מעודכנת לשנת 2020" : person.addressYear ? `כתובת (${person.addressYear})` : "כתובת", person.address],
     [person.previousAddressYear ? `כתובת ישנה לשנת ${person.previousAddressYear}` : "כתובת נוספת", person.previousAddress],
     ["יישוב", person.city],
+    ["קוד יישוב", person.cityCode],
   ].filter((row): row is [string, string] => Boolean(row[1]));
   const groups = [
     { title: "פרטים אישיים", rows: personalRows },
