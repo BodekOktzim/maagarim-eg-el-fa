@@ -8,7 +8,7 @@ export type WebPhoneResult = {
   source: string;
   query: string;
   matchedPhone: string;
-  matchLocation: "page-text";
+  matchLocation: "page-text" | "provider-snippet";
   relevanceScore: number;
   relevanceLabel: "גבוהה" | "בינונית" | "נמוכה";
 };
@@ -45,14 +45,14 @@ function findExactPhone(text: string, targetPhone: string) {
   return null;
 }
 
-function scoreResult(item: TavilyResult, match: { start: number; end: number }, query: string) {
+function scoreResult(item: TavilyResult, match: { start: number; end: number }, query: string, matchLocation: WebPhoneResult["matchLocation"]) {
   const title = String(item.title ?? "").toLocaleLowerCase("he");
   const text = String(item.raw_content ?? "").toLocaleLowerCase("he");
   const context = text.slice(Math.max(0, match.start - 280), Math.min(text.length, match.end + 280));
   const queryTerms = query.replace(/["()+]/g, " ").split(/\s+/).filter((term) => term.length >= 3);
   const termHits = queryTerms.filter((term) => title.includes(term) || context.includes(term)).length;
   const socialOrDirectory = /(instagram|facebook|tiktok|linkedin|עסק|חברה|שירות|טלפון|whatsapp|וואטסאפ)/i.test(`${title} ${context}`);
-  const score = Math.min(100, 45 + Math.min(30, termHits * 8) + (socialOrDirectory ? 15 : 0) + (item.raw_content && item.raw_content.length > 300 ? 10 : 0));
+  const score = Math.min(100, (matchLocation === "page-text" ? 45 : 25) + Math.min(30, termHits * 8) + (socialOrDirectory ? 15 : 0) + (item.raw_content && item.raw_content.length > 300 ? 10 : 0));
   return { score, label: score >= 75 ? "גבוהה" as const : score >= 58 ? "בינונית" as const : "נמוכה" as const };
 }
 
@@ -68,17 +68,20 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
       continue;
     }
     const pageText = typeof item.raw_content === "string" ? item.raw_content : "";
-    const match = findExactPhone(pageText, targetPhone);
+    const snippetText = typeof item.content === "string" ? item.content : "";
+    const pageMatch = findExactPhone(pageText, targetPhone);
+    const match = pageMatch ?? findExactPhone(snippetText, targetPhone);
     if (!match) continue;
-    const relevance = scoreResult(item, match, query);
+    const matchLocation = pageMatch ? "page-text" : "provider-snippet";
+    const relevance = scoreResult(item, match, query, matchLocation);
     filtered.push({
       title: item.title || "ללא כותרת",
       url: item.url,
-      snippet: `המספר מופיע בטקסט שנשלף: ${match.value}`,
+      snippet: pageMatch ? `המספר מופיע בטקסט שנשלף: ${match.value}` : `המספר מופיע בקטע התוכן שסופק על ידי מנוע החיפוש: ${match.value}`,
       source: "Tavily",
       query,
       matchedPhone: match.value,
-      matchLocation: "page-text",
+      matchLocation,
       relevanceScore: relevance.score,
       relevanceLabel: relevance.label,
     });

@@ -56,12 +56,14 @@ describe("filterExactPhoneResults", () => {
     expect(results).toHaveLength(0);
   });
 
-  it("does not treat a provider summary as source-text evidence", () => {
+  it("keeps a provider-snippet match separate from full page-text evidence", () => {
     const results = filterExactPhoneResults([
       { title: "Relevant summary", url: "https://example.com/summary", content: "Contact: 050-1234567" },
     ], "0501234567", query);
 
-    expect(results).toHaveLength(0);
+    expect(results).toHaveLength(1);
+    expect(results[0].matchLocation).toBe("provider-snippet");
+    expect(results[0].relevanceLabel).toBe("נמוכה");
   });
 
   it("rejects an exact phone that appears only in a title or URL", () => {
