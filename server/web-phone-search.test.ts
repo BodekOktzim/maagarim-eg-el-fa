@@ -62,4 +62,12 @@ describe("filterExactPhoneResults", () => {
 
     expect(results).toHaveLength(0);
   });
+
+  it("rejects non-http result URLs", () => {
+    const results = filterExactPhoneResults([
+      { title: "Invalid URL", url: "javascript:alert(1)", content: "050-1234567" },
+    ], "0501234567", query);
+
+    expect(results).toHaveLength(0);
+  });
 });

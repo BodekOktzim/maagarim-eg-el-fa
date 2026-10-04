@@ -48,6 +48,12 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
   const filtered: WebPhoneResult[] = [];
   for (const item of results) {
     if (typeof item.url !== "string" || !item.url) continue;
+    try {
+      const resultUrl = new URL(item.url);
+      if (resultUrl.protocol !== "https:" && resultUrl.protocol !== "http:") continue;
+    } catch {
+      continue;
+    }
     const pageTextSources = [item.raw_content, item.content].filter((value): value is string => typeof value === "string" && value.length > 0);
     let match: ReturnType<typeof findExactPhone> = null;
     for (const text of pageTextSources) {
