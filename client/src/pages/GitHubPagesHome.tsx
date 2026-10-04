@@ -111,13 +111,14 @@ export default function GitHubPagesHome() {
   const [facebookMode, setFacebookMode] = useState<"phone" | "name" | "facebook-id">("phone");
   const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [webPhoneQuery, setWebPhoneQuery] = useState("");
-  const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string; matchedPhone: string; matchLocation: "page-text" }[]>([]);
+  const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string; matchedPhone: string; matchLocation: "page-text"; relevanceScore: number; relevanceLabel: string }[]>([]);
   const [webSearchRoute, setWebSearchRoute] = useState("");
   const [isWebSearching, setIsWebSearching] = useState(false);
   const [isInternetSearchOpen, setIsInternetSearchOpen] = useState(false);
   const [webSearchError, setWebSearchError] = useState("");
   const [webSearchCompleted, setWebSearchCompleted] = useState(false);
   const [webSearchIncomplete, setWebSearchIncomplete] = useState(false);
+  const [webSearchLimited, setWebSearchLimited] = useState(false);
   const [webSearchDurationMs, setWebSearchDurationMs] = useState<number | null>(null);
   const webSearchStartedAtRef = useRef<number | null>(null);
   const webResumeInFlightRef = useRef(false);
@@ -339,7 +340,7 @@ export default function GitHubPagesHome() {
     setWebSearchDurationMs(null);
     webSearchStartedAtRef.current = Date.now();
     sessionStorage.setItem("maagarim-pending-web-phone-search", webPhoneQuery);
-    setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setWebSearchCompleted(false); setWebSearchIncomplete(false);
+    setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setWebSearchCompleted(false); setWebSearchIncomplete(false); setWebSearchLimited(false);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 35_000);
     try {
@@ -347,9 +348,9 @@ export default function GitHubPagesHome() {
       if (!base && window.location.hostname.endsWith("github.io")) throw new Error("חיפוש אינטרנטי פנימי דורש חיבור Backend. יש להגדיר VITE_API_BASE_URL לכתובת שרת החיפוש.");
       const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: webPhoneQuery }), signal: controller.signal });
       const contentType = response.headers.get("content-type") ?? "";
-      const payload = contentType.includes("application/json") ? await response.json() as { results?: typeof webSearchResults; route?: string; incomplete?: boolean; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
+      const payload = contentType.includes("application/json") ? await response.json() as { results?: typeof webSearchResults; route?: string; incomplete?: boolean; limited?: boolean; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
-      setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct"); setWebSearchIncomplete(Boolean(payload.incomplete)); setWebSearchCompleted(true);
+      setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct"); setWebSearchIncomplete(Boolean(payload.incomplete)); setWebSearchLimited(Boolean(payload.limited)); setWebSearchCompleted(true);
     } catch (error) {
       setWebSearchError(error instanceof DOMException && error.name === "AbortError"
         ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
@@ -455,7 +456,7 @@ export default function GitHubPagesHome() {
                 </form>
                 {isWebSearching && <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-sm text-white/70"><LoaderCircle size={18} className="animate-spin text-violet-200"/>מחפש עמודים ציבוריים ומוודא שהמספר מופיע בטקסט…</div>}
                 {webSearchError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{webSearchError}</p>}
-                {webSearchResults.length > 0 && <div className="space-y-3 border-t border-white/10 pt-4"><p className="text-xs leading-relaxed text-white/55">נמצאו {webSearchResults.length} עמודים עם הופעה מפורשת של המספר{webSearchIncomplete ? " · חלק מהחיפושים לא הושלמו — התוצאה חלקית" : ""}{webSearchRoute ? ` · נתיב חיבור: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}{webSearchDurationMs !== null ? ` · ${formatSearchDuration(webSearchDurationMs)}` : ""}</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 text-[11px] text-emerald-200/75">המספר נמצא בטקסט העמוד · {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}<p className="text-[11px] leading-relaxed text-white/40">הופעת מספר בעמוד ציבורי אינה מוכיחה שמדובר בפרטי האדם הנכון או שהפרטים עדכניים.</p></div>}
+                {webSearchResults.length > 0 && <div className="space-y-3 border-t border-white/10 pt-4"><p className="text-xs leading-relaxed text-white/55">נמצאו {webSearchResults.length} עמודים עם הופעה מפורשת של המספר{webSearchIncomplete ? " · חלק מהחיפושים לא הושלמו — התוצאה חלקית" : ""}{webSearchLimited ? " · מוצגות 100 התוצאות המדורגות הראשונות" : ""}{webSearchRoute ? ` · נתיב חיבור: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}{webSearchDurationMs !== null ? ` · ${formatSearchDuration(webSearchDurationMs)}` : ""}</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><span className="rounded-full border border-violet-200/15 bg-violet-200/10 px-2 py-1 text-[10px] text-violet-100">הקשר {result.relevanceLabel}</span></div><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 text-[11px] text-emerald-200/75">המספר נמצא בטקסט העמוד · {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}<p className="text-[11px] leading-relaxed text-white/40">דירוג ההקשר עוזר לסדר תוצאות (למשל עמוד עסקי או פרופיל שבו יש טלפון), אך אינו הוכחה שהמספר שייך לאדם מסוים.</p></div>}
                 {webSearchCompleted && webSearchResults.length === 0 && !webSearchError && <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">לא נמצאו עמודים שבהם המספר מופיע בטקסט שנשלף.{webSearchIncomplete ? " חלק מהחיפושים לא הושלמו, לכן זו בדיקה חלקית ולא הוכחה שלא קיימים עמודים נוספים." : ""}</p>}
               </DialogContent>
             </Dialog>

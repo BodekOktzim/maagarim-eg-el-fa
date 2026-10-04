@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterExactPhoneResults } from "./web-phone-search";
+import { buildQueries, filterExactPhoneResults } from "./web-phone-search";
 
 const query = '"0501234567"';
 
@@ -17,6 +17,7 @@ describe("filterExactPhoneResults", () => {
       matchLocation: "page-text",
     });
     expect(results[0].snippet).toContain("050-1234567");
+    expect(results[0].relevanceLabel).toBeDefined();
   });
 
   it("treats an Israeli international-format number as the same number", () => {
@@ -77,5 +78,25 @@ describe("filterExactPhoneResults", () => {
     ], "0501234567", query);
 
     expect(results).toHaveLength(0);
+  });
+
+  it("builds multiple coverage queries for social, directory, and Israeli contexts", () => {
+    const queries = buildQueries({
+      local: "0501234567",
+      international: "+972501234567",
+      variants: ["0501234567", "050-1234567", "050 1234567", "+972501234567"],
+    });
+    expect(queries.length).toBeGreaterThanOrEqual(5);
+    expect(queries.some((query) => query.includes("Instagram"))).toBe(true);
+    expect(queries.some((query) => query.includes("directory"))).toBe(true);
+  });
+
+  it("ranks pages with useful surrounding context above bare phone mentions", () => {
+    const results = filterExactPhoneResults([
+      { title: "Phone directory", url: "https://example.com/bare", raw_content: "050-1234567" },
+      { title: "Business contact Instagram", url: "https://example.com/context", raw_content: "Business contact and WhatsApp: 050-1234567. Instagram profile and service details." },
+    ], "0501234567", query);
+    expect(results[0].url).toBe("https://example.com/context");
+    expect(results[0].relevanceScore).toBeGreaterThan(results[1].relevanceScore);
   });
 });
