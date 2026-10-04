@@ -54,12 +54,8 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
     } catch {
       continue;
     }
-    const pageTextSources = [item.raw_content, item.content].filter((value): value is string => typeof value === "string" && value.length > 0);
-    let match: ReturnType<typeof findExactPhone> = null;
-    for (const text of pageTextSources) {
-      match = findExactPhone(text, targetPhone);
-      if (match) break;
-    }
+    const pageText = typeof item.raw_content === "string" ? item.raw_content : "";
+    const match = findExactPhone(pageText, targetPhone);
     if (!match) continue;
     filtered.push({
       title: item.title || "ללא כותרת",

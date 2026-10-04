@@ -6,8 +6,8 @@ const query = '"0501234567"';
 describe("filterExactPhoneResults", () => {
   it("keeps a result only when the exact local number appears in source text", () => {
     const results = filterExactPhoneResults([
-      { title: "Relevant page", url: "https://example.com/relevant", content: "Contact: 050-1234567" },
-      { title: "Unrelated page", url: "https://example.com/unrelated", content: "Contact: 054-7654321" },
+      { title: "Relevant page", url: "https://example.com/relevant", raw_content: "Contact: 050-1234567" },
+      { title: "Unrelated page", url: "https://example.com/unrelated", raw_content: "Contact: 054-7654321" },
     ], "0501234567", query);
 
     expect(results).toHaveLength(1);
@@ -50,6 +50,14 @@ describe("filterExactPhoneResults", () => {
   it("rejects semantic-only matches even when the title is relevant", () => {
     const results = filterExactPhoneResults([
       { title: "Phone contact for 054-7654321", url: "https://example.com/wrong", content: "This page mentions a phone listing." },
+    ], "0501234567", query);
+
+    expect(results).toHaveLength(0);
+  });
+
+  it("does not treat a provider summary as source-text evidence", () => {
+    const results = filterExactPhoneResults([
+      { title: "Relevant summary", url: "https://example.com/summary", content: "Contact: 050-1234567" },
     ], "0501234567", query);
 
     expect(results).toHaveLength(0);
