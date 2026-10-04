@@ -230,6 +230,9 @@ describe("synthetic end-to-end search paths and timings", () => {
     const id = await measure("national-id/all", () => search.searchFullDatasetsByIdWithDetails("12345", "all"));
     expect(id).toHaveLength(1);
     expect(id[0].sourceNames).toEqual(expect.arrayContaining(["AGRON 2006", "Elector"]));
+    const electorId = await measure("national-id/elector", () => search.searchFullDatasetsByIdWithDetails("12345", "elector"));
+    expect(electorId).toHaveLength(1);
+    expect(electorId[0].sourceKey).toBe("elector");
 
     const exactName = await measure("name/exact/all", () => search.searchFullDatasetsByText({ firstName: "Synthetic", lastName: "Fixture" }, "exact", "all"));
     expect(exactName).toHaveLength(2);
@@ -242,6 +245,9 @@ describe("synthetic end-to-end search paths and timings", () => {
     const location = await measure("location/all", () => search.searchFullDatasetsByText({ firstName: "Synthetic", location: "Testville" }, "exact", "all"));
     expect(location).toHaveLength(1);
     expect(location[0].sourceNames).toEqual(expect.arrayContaining(["AGRON 2006", "Elector"]));
+    const electorLocation = await measure("location/elector", () => search.searchFullDatasetsByText({ lastName: "Fixture", location: "Testville" }, "exact", "elector"));
+    expect(electorLocation).toHaveLength(1);
+    expect(electorLocation[0].sourceKey).toBe("elector");
 
     const age = await measure("name+age/agron", () => search.searchFullDatasetsByText({ firstName: "Synthetic", age: "37" }, "exact", "agron2006"));
     expect(age).toHaveLength(1);
@@ -250,6 +256,9 @@ describe("synthetic end-to-end search paths and timings", () => {
     const phone = await measure("phone/all", () => search.searchFullDatasetsByPhone("0000000", "all"));
     expect(phone).toHaveLength(2);
     expect(phone.some((hit) => hit.sourceKey === "facebook")).toBe(true);
+    const agronPhone = await measure("phone/agron", () => search.searchFullDatasetsByPhone("0000000", "agron2006"));
+    expect(agronPhone).toHaveLength(1);
+    expect(agronPhone[0].sourceKey).toBe("agron2006");
     const facebookPhone = await measure("phone/facebook", () => search.searchFullDatasetsByPhone("0000000", "facebook"));
     expect(facebookPhone).toHaveLength(1);
     expect(facebookPhone[0].sourceKey).toBe("facebook");
@@ -269,6 +278,6 @@ describe("synthetic end-to-end search paths and timings", () => {
     await expect(search.searchFullDatasetsByText({ location: "Testville" }, "exact", "all")).rejects.toThrow("יש להזין שם פרטי או שם משפחה");
     await expect(search.searchFullDatasetsByText({ firstName: "Synthetic" }, "exact", "facebook")).rejects.toThrow("יש למלא גם שם פרטי וגם שם משפחה");
 
-    console.info("Synthetic search timings (ms):", JSON.stringify(timings));
+    console.info("Synthetic fixture timings (ms; first request may be cold, later calls use in-memory caches):", JSON.stringify(timings));
   });
 });

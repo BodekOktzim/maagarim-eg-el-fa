@@ -359,43 +359,61 @@ async function findSparseRange(meta: ExtensionIndex, target: number | bigint, ke
   const count = buffer.byteLength / sparseRecordBytes;
   const read = keyBytes === 8 ? readSparse64 : readSparse32;
   const targetBig = typeof target === "bigint" ? target : BigInt(target >>> 0);
+  const targetNumber = Number(targetBig);
+  const isLess = (value: number | bigint) => keyBytes === 8 ? (value as bigint) < targetBig : Number(value) < targetNumber;
+  const isAtMost = (value: number | bigint) => keyBytes === 8 ? (value as bigint) <= targetBig : Number(value) <= targetNumber;
   let low = 0;
   let high = count;
   while (low < high) {
     const mid = (low + high) >>> 1;
-    const key = BigInt(read(view, mid).key);
-    if (key < targetBig) low = mid + 1;
+    if (isLess(read(view, mid).key)) low = mid + 1;
     else high = mid;
   }
   const firstAtOrAfter = low;
   const startOrdinal = firstAtOrAfter === 0 ? 0 : read(view, firstAtOrAfter - 1).ordinal;
   let firstGreater = firstAtOrAfter;
-  while (firstGreater < count && BigInt(read(view, firstGreater).key) <= targetBig) firstGreater += 1;
+  while (firstGreater < count && isAtMost(read(view, firstGreater).key)) firstGreater += 1;
   const totalRecords = indexBytes / recordBytes;
   const endOrdinal = firstGreater < count ? read(view, firstGreater).ordinal : totalRecords;
   return { startOrdinal, endOrdinal, totalRecords };
 }
 
-async function readPostingGroup(meta: ExtensionIndex, key: number) {
+type SparseRange = Awaited<ReturnType<typeof findSparseRange>>;
+
+async function findPostingRanges(meta: ExtensionIndex, key: number) {
   const files = meta.indexFiles ?? [meta.indexFile];
   const sparseFiles = meta.sparseFiles ?? [meta.sparseFile];
   const bytes = meta.indexBytesByFile ?? [meta.indexBytes];
+  return Promise.all(files.map((_, fileIndex) => findSparseRange(meta, key, 4, 16, sparseFiles[fileIndex], bytes[fileIndex])));
+}
+
+async function readPostingGroup(meta: ExtensionIndex, key: number, knownRanges?: SparseRange[]) {
+  const files = meta.indexFiles ?? [meta.indexFile];
+  const ranges = knownRanges ?? await findPostingRanges(meta, key);
   const records: RowPointer[] = [];
   for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
     const file = files[fileIndex];
-    const range = await findSparseRange(meta, key, 4, 16, sparseFiles[fileIndex], bytes[fileIndex]);
+    const range = ranges[fileIndex];
     const count = range.endOrdinal - range.startOrdinal;
     if (count <= 0) continue;
     const chunkRecords = 65_536;
-    for (let consumed = 0; consumed < count; consumed += chunkRecords) {
-      const chunkCount = Math.min(chunkRecords, count - consumed);
-      const chunkStart = range.startOrdinal + consumed;
-      const buffer = await getByteRange(`${INDEX_ROOT}/search-index-full/${file}`, chunkStart * 16, (chunkStart + chunkCount) * 16 - 1, file);
-      if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${file}.`);
-      const view = new DataView(buffer);
-      for (let byte = 0; byte < buffer.byteLength; byte += 16) {
-        if (view.getUint32(byte, true) !== key) continue;
-        records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+    const chunksPerBatch = 2;
+    for (let consumed = 0; consumed < count; consumed += chunkRecords * chunksPerBatch) {
+      const chunkRanges: { start: number; count: number }[] = [];
+      for (let batch = 0; batch < chunksPerBatch && consumed + batch * chunkRecords < count; batch += 1) {
+        const chunkStart = range.startOrdinal + consumed + batch * chunkRecords;
+        chunkRanges.push({ start: chunkStart, count: Math.min(chunkRecords, range.endOrdinal - chunkStart) });
+      }
+      const buffers = await Promise.all(chunkRanges.map(({ start, count: chunkCount }) => getByteRange(
+        `${INDEX_ROOT}/search-index-full/${file}`, start * 16, (start + chunkCount) * 16 - 1, file,
+      )));
+      for (const buffer of buffers) {
+        if (buffer.byteLength % 16) throw new Error(`טווח אינדקס פגום עבור ${file}.`);
+        const view = new DataView(buffer);
+        for (let byte = 0; byte < buffer.byteLength; byte += 16) {
+          if (view.getUint32(byte, true) !== key) continue;
+          records.push({ offset: Number(view.getBigUint64(byte + 4, true)), length: view.getUint32(byte + 12, true) });
+        }
       }
     }
   }
@@ -787,7 +805,16 @@ async function mapLimit<T, R>(items: T[], limit: number, map: (item: T) => Promi
 export function intersectRowPointerGroups(groups: { offset: number; length: number }[][]) {
   if (!groups.length) return [] as { offset: number; length: number }[];
   const maps = groups.map((group) => new Map(group.map((pointer) => [pointer.offset, pointer]))).sort((left, right) => left.size - right.size);
-  return Array.from(maps[0].values()).filter((pointer) => maps.slice(1).every((group) => group.has(pointer.offset)));
+  const [smallest, ...others] = maps;
+  const intersections: { offset: number; length: number }[] = [];
+  smallest.forEach((pointer) => {
+    let matchesEveryGroup = true;
+    for (const group of others) {
+      if (!group.has(pointer.offset)) { matchesEveryGroup = false; break; }
+    }
+    if (matchesEveryGroup) intersections.push(pointer);
+  });
+  return intersections;
 }
 
 export function appendItems<T>(target: T[], items: readonly T[]) {
@@ -803,27 +830,30 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
   const ageSparseFile = ageRange && source.key === "agron2006" ? extensions.indexes["age-agron"]?.sparseFile : undefined;
   if (ageSparseFile) sparseFiles.add(ageSparseFile);
   await Promise.all(Array.from(sparseFiles, (file) => file ? getSparse(file) : Promise.resolve()));
-  const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof TextSearchCriteria; count: number }[] = [];
-  for (const criterion of criteriaItems) {
+  const candidateQueries = criteriaItems.flatMap((criterion) => {
     const grams = bigrams(matchMode === "similar" ? normalizeFuzzyToken(criterion.value) : criterion.value);
     if (normalizeText(criterion.value).length < 2) throw new Error("בחיפוש לפי שם או יישוב יש להזין לפחות שתי אותיות.");
-    for (const gram of grams) {
-      const meta = extensions.indexes[criterion.indexKey];
-      if (!meta) continue;
-      const key = hash32(gram);
-      const range = await findSparseRange(meta, key, 4, 16);
-      const count = Math.max(0, range.endOrdinal - range.startOrdinal);
-      if (count) candidates.push({ meta, key, value: criterion.value, field: criterion.field, count });
-    }
-  }
+    const meta = extensions.indexes[criterion.indexKey];
+    if (!meta) return [];
+    return grams.map((gram) => ({ meta, key: hash32(gram), value: criterion.value, field: criterion.field }));
+  });
+  const candidates: { meta: ExtensionIndex; key: number; value: string; field: keyof TextSearchCriteria; count: number; ranges: SparseRange[] }[] = [];
+  const textCandidates = await mapLimit(candidateQueries, 32, async (candidate) => {
+    const ranges = await findPostingRanges(candidate.meta, candidate.key);
+    const count = ranges.reduce((sum, range) => sum + Math.max(0, range.endOrdinal - range.startOrdinal), 0);
+    return { ...candidate, ranges, count };
+  });
+  for (const candidate of textCandidates) if (candidate.count) candidates.push(candidate);
   if (ageRange && source.key === "agron2006") {
     const meta = extensions.indexes["age-agron"];
     if (meta) {
-      for (let key = ageRange.min; key <= ageRange.max; key += 1) {
-        const range = await findSparseRange(meta, key, 4, 16);
-        const count = Math.max(0, range.endOrdinal - range.startOrdinal);
-        if (count) candidates.push({ meta, key, value: String(key), field: "age", count });
-      }
+      const ageKeys = Array.from({ length: ageRange.max - ageRange.min + 1 }, (_, index) => ageRange.min + index);
+      const ageCandidates = await mapLimit(ageKeys, 32, async (key) => {
+        const ranges = await findPostingRanges(meta, key);
+        const count = ranges.reduce((sum, range) => sum + Math.max(0, range.endOrdinal - range.startOrdinal), 0);
+        return { meta, key, value: String(key), field: "age" as const, count, ranges };
+      });
+      for (const candidate of ageCandidates) if (candidate.count) candidates.push(candidate);
     }
   }
   if (!candidates.length) return [] as SearchHit[];
@@ -875,7 +905,7 @@ async function searchTextInSource(source: IndexSource, criteria: TextSearchCrite
     .filter((candidate) => !(hasTextCandidates && candidate.field === "age"))
     .map(async (candidate) => ({
       field: candidate.field,
-      records: (await readPostingGroup(candidate.meta, candidate.key)).records,
+      records: (await readPostingGroup(candidate.meta, candidate.key, candidate.ranges)).records,
     })));
   for (const group of postingGroups) {
     const current = candidateGroups.get(group.field) ?? [];

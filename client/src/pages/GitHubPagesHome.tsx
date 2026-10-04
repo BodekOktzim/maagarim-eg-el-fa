@@ -27,6 +27,10 @@ const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "facebook", label: "Facebook" },
 ];
 
+function formatSearchDuration(milliseconds: number) {
+  return milliseconds < 1000 ? `${Math.round(milliseconds)} מ״ש` : `${(milliseconds / 1000).toFixed(2)} שנ׳`;
+}
+
 type SearchDetailGroup = { title: string; rows: [string, string][] };
 
 function searchHitDetailGroups(hit: SearchHit): SearchDetailGroup[] {
@@ -109,12 +113,14 @@ export default function GitHubPagesHome() {
   const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string }[]>([]);
   const [webSearchRoute, setWebSearchRoute] = useState("");
   const [isWebSearching, setIsWebSearching] = useState(false);
+  const [webSearchDurationMs, setWebSearchDurationMs] = useState<number | null>(null);
   const webSearchStartedAtRef = useRef<number | null>(null);
   const webResumeInFlightRef = useRef(false);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [searchDurationMs, setSearchDurationMs] = useState<number | null>(null);
   const [exportFormat, setExportFormat] = useState<SearchExportFormat>("csv");
   const [isExporting, setIsExporting] = useState(false);
   const [exportingFamilyId, setExportingFamilyId] = useState<string | null>(null);
@@ -124,11 +130,12 @@ export default function GitHubPagesHome() {
   const [familyCentralId, setFamilyCentralId] = useState("");
   const [isLoadingFamily, setIsLoadingFamily] = useState(false);
   const [familyError, setFamilyError] = useState("");
+  const [familyDurationMs, setFamilyDurationMs] = useState<number | null>(null);
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
 
-  const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); };
+  const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); setFamilyDurationMs(null); };
   const exportSearchResults = async () => {
     if (!results.length || isExporting) return;
     setIsExporting(true);
@@ -232,6 +239,8 @@ export default function GitHubPagesHome() {
     setSearched(true);
     clearTree();
     setIsSearching(true);
+    setSearchDurationMs(null);
+    const startedAt = performance.now();
     const sourceLabel = SOURCE_OPTIONS.find((option) => option.id === sourceFilter)?.label ?? "הכול";
     try {
       setLastQuery(`${sourceLabel} · ${description}`);
@@ -241,6 +250,7 @@ export default function GitHubPagesHome() {
       if (runId === searchRunRef.current) setSearchError(error instanceof Error ? error.message : "החיפוש נכשל. בדוק חיבור לאינטרנט ונסה שוב.");
     } finally {
       if (runId === searchRunRef.current) {
+        setSearchDurationMs(performance.now() - startedAt);
         setIsSearching(false);
         activeSearchRef.current = null;
         sessionStorage.removeItem("maagarim-pending-search");
@@ -264,6 +274,7 @@ export default function GitHubPagesHome() {
     setSearchError(message);
     setResults([]);
     setSearched(false);
+    setSearchDurationMs(null);
     clearTree();
   };
 
@@ -318,6 +329,8 @@ export default function GitHubPagesHome() {
 
   const performInternetPhoneSearch = async () => {
     if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
+    const startedAt = performance.now();
+    setWebSearchDurationMs(null);
     webSearchStartedAtRef.current = Date.now();
     sessionStorage.setItem("maagarim-pending-web-phone-search", webPhoneQuery);
     setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError("");
@@ -335,7 +348,7 @@ export default function GitHubPagesHome() {
       setSearchError(error instanceof DOMException && error.name === "AbortError"
         ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
         : error instanceof Error ? error.message : "חיפוש האינטרנט נכשל.");
-    } finally { window.clearTimeout(timeout); setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
+    } finally { window.clearTimeout(timeout); setWebSearchDurationMs(performance.now() - startedAt); setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
   };
 
   useEffect(() => {
@@ -359,12 +372,15 @@ export default function GitHubPagesHome() {
     setFamilyCentralId(digits);
     setFamilyData(null);
     setIsLoadingFamily(true);
+    setFamilyDurationMs(null);
+    const startedAt = performance.now();
     try {
       setFamilyData(await searchFamilyTreeById(digits));
       window.setTimeout(() => document.getElementById("family-tree")?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (error) {
       setFamilyError(error instanceof Error ? error.message : "לא ניתן לטעון את נתוני המשפחה.");
     } finally {
+      setFamilyDurationMs(performance.now() - startedAt);
       setIsLoadingFamily(false);
     }
   };
@@ -376,9 +392,11 @@ export default function GitHubPagesHome() {
     setFamilyData(null);
     setFamilyError("");
     setIsLoadingFamily(true);
+    setFamilyDurationMs(null);
+    const startedAt = performance.now();
     try { setFamilyData(await searchFamilyTreeById(digits)); }
     catch (error) { setFamilyError(error instanceof Error ? error.message : "לא ניתן לטעון את נתוני המשפחה."); }
-    finally { setIsLoadingFamily(false); }
+    finally { setFamilyDurationMs(performance.now() - startedAt); setIsLoadingFamily(false); }
   };
 
   if (!unlocked) {
@@ -426,7 +444,7 @@ export default function GitHubPagesHome() {
               <input id="internet-phone-search" type="tel" inputMode="tel" autoComplete="off" value={webPhoneQuery} onChange={(event) => setWebPhoneQuery(event.target.value)} placeholder="050-1234567 או +972501234567" className="h-12 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
               <button type="submit" disabled={isWebSearching} className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-7 font-semibold text-violet-50 transition hover:bg-violet-200/25 disabled:opacity-60">{isWebSearching ? <><LoaderCircle size={17} className="ml-2 animate-spin"/>מחפש ברשת…</> : <><Search size={17} className="ml-2"/>חפש מספר באינטרנט</>}</button>
             </div>
-            {webSearchResults.length > 0 && <div className="space-y-2 border-t border-white/10 pt-3"><p className="text-xs text-white/50">נמצאו {webSearchResults.length} תוצאות ציבוריות{webSearchRoute ? ` · נתיב: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}:</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}</div>}
+            {webSearchResults.length > 0 && <div className="space-y-2 border-t border-white/10 pt-3"><p className="text-xs text-white/50">נמצאו {webSearchResults.length} תוצאות ציבוריות{webSearchRoute ? ` · נתיב: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}{webSearchDurationMs !== null ? ` · זמן חיפוש: ${formatSearchDuration(webSearchDurationMs)}` : ""}:</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}</div>}
           </form>
 
           {sourceFilter !== "facebook" ? <>
@@ -469,7 +487,7 @@ export default function GitHubPagesHome() {
       {isSearching && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">החיפוש מתבצע…</p><p className="mt-1 text-sm text-white/50">נבדקים האינדקסים המלאים של המקורות ונשלפות רק שורות מתאימות.</p></div></section>}
 
       {searched && !isSearching && <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p></div>{results.length > 0 && <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="search-export-format">סוג קובץ לייצוא</label><select id="search-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as SearchExportFormat)} className="min-h-10 rounded-xl border border-white/15 bg-[#17101f] px-3 text-xs text-white"><option value="csv">CSV — Excel / Sheets</option><option value="tsv">TSV — טבלה</option><option value="json">JSON — נתונים</option><option value="jsonl">JSONL — שורה לרשומה</option><option value="txt">TXT — טקסט</option><option value="html">HTML — דף טבלה</option><option value="xml">XML — נתונים</option><option value="xlsx">XLSX — Excel</option></select><button type="button" onClick={() => void exportSearchResults()} disabled={isExporting} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#f2a9d2] px-4 text-xs font-semibold text-[#30123e] hover:bg-[#f7c2e0] disabled:opacity-60">{isExporting ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}ייצא</button></div>}{results.length > 0 && <p className="w-full text-xs text-white/40">הקובץ עשוי לכלול מידע אישי — שמרו אותו במקום מוגן.</p>}{exportError && <p role="alert" className="w-full text-xs text-rose-200">{exportError}</p>}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"><div><h2 className="font-semibold">תוצאות חיפוש</h2><p className="mt-1 text-sm text-white/55">{results.length ? `נמצאו ${results.length} התאמות עבור ${lastQuery}` : `לא נמצאה התאמה עבור ${lastQuery}`}</p>{searchDurationMs !== null && <p className="mt-1 text-xs text-cyan-100/70">משך החיפוש: {formatSearchDuration(searchDurationMs)}</p>}</div>{results.length > 0 && <div className="flex flex-wrap items-center gap-2"><label className="sr-only" htmlFor="search-export-format">סוג קובץ לייצוא</label><select id="search-export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as SearchExportFormat)} className="min-h-10 rounded-xl border border-white/15 bg-[#17101f] px-3 text-xs text-white"><option value="csv">CSV — Excel / Sheets</option><option value="tsv">TSV — טבלה</option><option value="json">JSON — נתונים</option><option value="jsonl">JSONL — שורה לרשומה</option><option value="txt">TXT — טקסט</option><option value="html">HTML — דף טבלה</option><option value="xml">XML — נתונים</option><option value="xlsx">XLSX — Excel</option></select><button type="button" onClick={() => void exportSearchResults()} disabled={isExporting} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[#f2a9d2] px-4 text-xs font-semibold text-[#30123e] hover:bg-[#f7c2e0] disabled:opacity-60">{isExporting ? <LoaderCircle size={15} className="animate-spin"/> : <Download size={15}/>}ייצא</button></div>}{results.length > 0 && <p className="w-full text-xs text-white/40">הקובץ עשוי לכלול מידע אישי — שמרו אותו במקום מוגן.</p>}{exportError && <p role="alert" className="w-full text-xs text-rose-200">{exportError}</p>}</div>
         {results.length > 0 ? <div className="grid gap-3 xl:grid-cols-2">{results.map((hit, index) => <article key={`${hit.nationalId}-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-200/70">מקור: {hit.sourceNames?.join(" · ") || hit.source}</p><h3 className="mt-1 text-lg font-semibold">{hit.fullName}</h3></div><span className={`rounded-full px-3 py-1 text-xs ${hit.confidence === "exact-id" || hit.confidence === "phone-match" || hit.confidence === "facebook-id-match" ? "border border-emerald-200/20 bg-emerald-200/10 text-emerald-100" : "border border-amber-200/20 bg-amber-200/10 text-amber-100"}`}>{hit.confidence === "exact-id" ? "התאמה מדויקת" : hit.confidence === "phone-match" ? "טלפון מדויק" : hit.confidence === "facebook-id-match" ? "מזהה Facebook מדויק" : hit.confidence === "approximate-text-match" ? "התאמה דומה" : hit.confidence === "text-match" ? "התאמת טקסט" : "התאמה אפשרית"}</span></div>
           <div className="mt-4 space-y-3">{searchHitDetailGroups(hit).map((group) => <section key={group.title} className="rounded-xl border border-white/10 bg-black/10 p-3"><h4 className="mb-2 text-xs font-semibold text-fuchsia-100/80">{group.title}</h4><dl className="grid gap-2 text-sm sm:grid-cols-2">{group.rows.map(([label, value]) => <div key={label} className={`min-w-0 rounded-lg border border-white/[0.06] bg-white/[0.025] px-3 py-2 ${label.includes("כתובת") ? "sm:col-span-2" : ""}`}><dt className="text-xs text-white/55">{label}</dt><dd dir="auto" className={`mt-1 break-words text-sm font-medium leading-relaxed text-white/90 ${label.includes("זהות") || label.includes("Facebook") ? "font-mono" : ""}`}>{value}</dd></div>)}</dl></section>)}</div>
@@ -480,7 +498,7 @@ export default function GitHubPagesHome() {
 
       {familyError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{familyError}</p>}
       {isLoadingFamily && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">טוען קשרים משפחתיים…</p><p className="mt-1 text-sm text-white/50">המידע נבנה מהקשרים המתועדים במאגר המקור.</p></div></section>}
-      {familyData && familyCentralId && <section id="family-tree" className="scroll-mt-24 space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">Family relationship map</p><h2 className="mt-1 text-2xl font-bold text-white">עץ קשרים משפחתיים</h2><p className="mt-1 text-sm text-white/50">מרכז העץ: ת״ז {familyCentralId}</p></div><div className="flex flex-wrap gap-2 text-xs text-white/45"><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><MapPin size={13}/> יישוב וכתובת לפי זמינות</span><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><CalendarDays size={13}/> פרטי מקור</span></div></div><FamilyTree data={familyData} centralId={familyCentralId} onSelect={(id) => void changeFamilyCenter(id)}/></section>}
+      {familyData && familyCentralId && <section id="family-tree" className="scroll-mt-24 space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">Family relationship map</p><h2 className="mt-1 text-2xl font-bold text-white">עץ קשרים משפחתיים</h2><p className="mt-1 text-sm text-white/50">מרכז העץ: ת״ז {familyCentralId}{familyDurationMs !== null ? ` · זמן טעינה: ${formatSearchDuration(familyDurationMs)}` : ""}</p></div><div className="flex flex-wrap gap-2 text-xs text-white/45"><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><MapPin size={13}/> יישוב וכתובת לפי זמינות</span><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><CalendarDays size={13}/> פרטי מקור</span></div></div><FamilyTree data={familyData} centralId={familyCentralId} onSelect={(id) => void changeFamilyCenter(id)}/></section>}
     </main>
     <footer className="border-t border-white/10 px-4 py-5 text-center font-serif text-xs tracking-[0.12em] text-white/35">OSINT Search</footer>
   </div>;
