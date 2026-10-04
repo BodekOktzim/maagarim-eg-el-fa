@@ -8,7 +8,7 @@ export type WebPhoneResult = {
   source: string;
   query: string;
   matchedPhone: string;
-  matchLocation: "page-text" | "title-or-url";
+  matchLocation: "page-text";
 };
 
 type TavilyResult = { title?: string; url?: string; content?: string; raw_content?: string };
@@ -43,12 +43,6 @@ function findExactPhone(text: string, targetPhone: string) {
   return null;
 }
 
-function makeEvidenceExcerpt(text: string, start: number, end: number) {
-  const left = Math.max(0, start - 180);
-  const right = Math.min(text.length, end + 180);
-  return `${left > 0 ? "…" : ""}${text.slice(left, right).replace(/\s+/g, " ").trim()}${right < text.length ? "…" : ""}`;
-}
-
 export function filterExactPhoneResults(results: TavilyResult[], inputPhone: string, query: string): WebPhoneResult[] {
   const targetPhone = normalizePhone(inputPhone).local;
   const filtered: WebPhoneResult[] = [];
@@ -56,36 +50,20 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
     if (typeof item.url !== "string" || !item.url) continue;
     const pageTextSources = [item.raw_content, item.content].filter((value): value is string => typeof value === "string" && value.length > 0);
     let match: ReturnType<typeof findExactPhone> = null;
-    let matchedText = "";
     for (const text of pageTextSources) {
       match = findExactPhone(text, targetPhone);
-      if (match) { matchedText = text; break; }
+      if (match) break;
     }
-    if (match) {
-      filtered.push({
-        title: item.title || "ללא כותרת",
-        url: item.url,
-        snippet: makeEvidenceExcerpt(matchedText, match.start, match.end),
-        source: "Tavily",
-        query,
-        matchedPhone: match.value,
-        matchLocation: "page-text",
-      });
-      continue;
-    }
-    const titleOrUrl = `${item.title || ""} ${item.url}`;
-    match = findExactPhone(titleOrUrl, targetPhone);
-    if (match) {
-      filtered.push({
-        title: item.title || "ללא כותרת",
-        url: item.url,
-        snippet: `המספר מופיע בכותרת או בכתובת העמוד: ${match.value}`,
-        source: "Tavily",
-        query,
-        matchedPhone: match.value,
-        matchLocation: "title-or-url",
-      });
-    }
+    if (!match) continue;
+    filtered.push({
+      title: item.title || "ללא כותרת",
+      url: item.url,
+      snippet: `המספר מופיע בטקסט שנשלף: ${match.value}`,
+      source: "Tavily",
+      query,
+      matchedPhone: match.value,
+      matchLocation: "page-text",
+    });
   }
   return filtered;
 }

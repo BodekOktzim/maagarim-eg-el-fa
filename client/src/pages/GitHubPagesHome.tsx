@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { buildSearchResultRows, buildSearchResultsCsv, createSearchExportBlob, SEARCH_EXPORT_FORMATS, type SearchExportFormat } from "@/lib/search-export";
 import {
@@ -110,9 +111,11 @@ export default function GitHubPagesHome() {
   const [facebookMode, setFacebookMode] = useState<"phone" | "name" | "facebook-id">("phone");
   const [textMatchMode, setTextMatchMode] = useState<TextMatchMode>("exact");
   const [webPhoneQuery, setWebPhoneQuery] = useState("");
-  const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string; matchedPhone: string; matchLocation: "page-text" | "title-or-url" }[]>([]);
+  const [webSearchResults, setWebSearchResults] = useState<{ title: string; url: string; snippet: string; source: string; matchedPhone: string; matchLocation: "page-text" }[]>([]);
   const [webSearchRoute, setWebSearchRoute] = useState("");
   const [isWebSearching, setIsWebSearching] = useState(false);
+  const [isInternetSearchOpen, setIsInternetSearchOpen] = useState(false);
+  const [webSearchError, setWebSearchError] = useState("");
   const [webSearchCompleted, setWebSearchCompleted] = useState(false);
   const [webSearchIncomplete, setWebSearchIncomplete] = useState(false);
   const [webSearchDurationMs, setWebSearchDurationMs] = useState<number | null>(null);
@@ -330,12 +333,13 @@ export default function GitHubPagesHome() {
   };
 
   const performInternetPhoneSearch = async () => {
-    if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
+    setWebSearchError("");
+    if (webPhoneQuery.replace(/\D/g, "").length < 7) { setWebSearchResults([]); setWebSearchCompleted(false); setWebSearchError("יש להזין מספר טלפון בן 7 ספרות לפחות."); return; }
     const startedAt = performance.now();
     setWebSearchDurationMs(null);
     webSearchStartedAtRef.current = Date.now();
     sessionStorage.setItem("maagarim-pending-web-phone-search", webPhoneQuery);
-    setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setSearchError(""); setWebSearchCompleted(false); setWebSearchIncomplete(false);
+    setIsWebSearching(true); setWebSearchResults([]); setWebSearchRoute(""); setWebSearchCompleted(false); setWebSearchIncomplete(false);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 35_000);
     try {
@@ -347,7 +351,7 @@ export default function GitHubPagesHome() {
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
       setWebSearchResults(payload.results ?? []); setWebSearchRoute(payload.route ?? "direct"); setWebSearchIncomplete(Boolean(payload.incomplete)); setWebSearchCompleted(true);
     } catch (error) {
-      setSearchError(error instanceof DOMException && error.name === "AbortError"
+      setWebSearchError(error instanceof DOMException && error.name === "AbortError"
         ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
         : error instanceof Error ? error.message : "חיפוש האינטרנט נכשל.");
     } finally { window.clearTimeout(timeout); setWebSearchDurationMs(performance.now() - startedAt); setIsWebSearching(false); webSearchStartedAtRef.current = null; sessionStorage.removeItem("maagarim-pending-web-phone-search"); }
@@ -439,16 +443,23 @@ export default function GitHubPagesHome() {
             </div>
           </div>
 
-          <form onSubmit={runInternetPhoneSearch} className="space-y-3 rounded-2xl border border-violet-200/15 bg-violet-200/[0.04] p-4 sm:p-5" aria-label="חיפוש מספר באינטרנט">
-            <div><h2 className="text-base font-semibold">חיפוש מספר באינטרנט</h2><p className="mt-1 text-xs leading-relaxed text-white/50">מחפש עמודים ציבוריים ומציג רק כאלה שבהם אותו מספר מופיע במפורש בטקסט המקור, בכותרת או בקישור. הופעת המספר אינה מוכיחה את זהות בעליו; אין חיפוש במאגרי משתמשים פרטיים או מאחורי התחברות/CAPTCHA.</p></div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <label htmlFor="internet-phone-search" className="sr-only">מספר טלפון לחיפוש באינטרנט</label>
-              <input id="internet-phone-search" type="tel" inputMode="tel" autoComplete="off" value={webPhoneQuery} onChange={(event) => setWebPhoneQuery(event.target.value)} placeholder="050-1234567 או +972501234567" className="h-12 min-w-0 flex-1 rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-              <button type="submit" disabled={isWebSearching} className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-7 font-semibold text-violet-50 transition hover:bg-violet-200/25 disabled:opacity-60">{isWebSearching ? <><LoaderCircle size={17} className="ml-2 animate-spin"/>מחפש ברשת…</> : <><Search size={17} className="ml-2"/>חפש מספר באינטרנט</>}</button>
-            </div>
-            {webSearchResults.length > 0 && <div className="space-y-2 border-t border-white/10 pt-3"><p className="text-xs text-white/50">נמצאו {webSearchResults.length} עמודים שבהם המספר מופיע במפורש{webSearchIncomplete ? " · חלק ממנועי החיפוש לא השלימו את הבדיקה" : ""}{webSearchRoute ? ` · נתיב: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}{webSearchDurationMs !== null ? ` · זמן חיפוש: ${formatSearchDuration(webSearchDurationMs)}` : ""}:</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 text-[11px] text-emerald-200/75">{result.matchLocation === "page-text" ? "המספר נמצא בטקסט המקור" : "המספר נמצא בכותרת או בקישור"} · התאמה: {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}<p className="text-[11px] leading-relaxed text-white/40">האימות כאן הוא של הופעת אותן ספרות במקור שנשלף בלבד; הוא אינו מאמת שהמידע עדכני או שהעמוד שייך לבעל המספר.</p></div>}
-            {webSearchCompleted && webSearchResults.length === 0 && <p className="border-t border-white/10 pt-3 text-xs leading-relaxed text-white/55">לא נמצאו עמודים שבהם המספר הזה מופיע במפורש; תוצאות עם מספרים אחרים או התאמה סמנטית בלבד לא מוצגות.{webSearchIncomplete ? " חלק מהחיפושים לא הושלמו, ולכן זו בדיקה חלקית ולא הוכחה שאין תוצאה." : ""}</p>}
-          </form>
+          <section className="flex flex-col gap-4 rounded-2xl border border-violet-200/15 bg-violet-200/[0.04] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5" aria-label="חיפוש מספר באינטרנט">
+            <div className="min-w-0"><h2 className="text-base font-semibold">חיפוש באינטרנט</h2><p className="mt-1 max-w-3xl text-xs leading-relaxed text-white/50">חיפוש במסמכים ועמודים ציבוריים דרך מנוע החיפוש המחובר. מוצגות רק תוצאות שבהן אותו מספר מופיע במפורש בטקסט שנשלף; הופעה זו אינה מוכיחה שהמספר שייך לאדם המוזכר בעמוד.</p></div>
+            <Dialog open={isInternetSearchOpen} onOpenChange={setIsInternetSearchOpen}>
+              <DialogTrigger asChild><button type="button" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-5 font-semibold text-violet-50 transition hover:bg-violet-200/25"><Search size={17} className="ml-2"/>חפש באינטרנט</button></DialogTrigger>
+              <DialogContent dir="rtl" className="max-h-[90vh] overflow-y-auto border-violet-100/15 bg-[#211528] text-right text-slate-100 sm:max-w-2xl">
+                <DialogHeader className="text-right"><DialogTitle className="text-violet-100">חיפוש מספר טלפון באינטרנט</DialogTitle><DialogDescription className="text-right leading-relaxed text-white/55">הזן מספר כדי לחפש עמודים ציבוריים. יוצגו רק עמודים שבהם המספר המדויק מופיע בטקסט שהתקבל מהספק. התוצאה מאמתת אזכור בלבד — לא בעלות, זהות, עדכניות או קשר של אדם למספר. לא מבוצע מעקב אחר כתובות דוא״ל או איסוף פרטים אישיים נוספים.</DialogDescription></DialogHeader>
+                <form onSubmit={runInternetPhoneSearch} className="space-y-3" aria-label="טופס חיפוש אינטרנטי לפי מספר">
+                  <label htmlFor="internet-phone-search" className="block space-y-1.5 text-sm text-white/75"><span>מספר טלפון</span><input id="internet-phone-search" type="tel" inputMode="tel" autoComplete="off" value={webPhoneQuery} onChange={(event) => setWebPhoneQuery(event.target.value)} placeholder="050-1234567 או +972501234567" className="h-12 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/></label>
+                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-[11px] leading-relaxed text-white/40">החיפוש נשלח לספק החיפוש הציבורי המחובר.</p><button type="submit" disabled={isWebSearching} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-violet-100/25 bg-violet-200/15 px-6 font-semibold text-violet-50 transition hover:bg-violet-200/25 disabled:opacity-60">{isWebSearching ? <><LoaderCircle size={17} className="ml-2 animate-spin"/>מחפש ברשת…</> : <><Search size={17} className="ml-2"/>חפש מספר</>}</button></div>
+                </form>
+                {isWebSearching && <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-sm text-white/70"><LoaderCircle size={18} className="animate-spin text-violet-200"/>מחפש עמודים ציבוריים ומוודא שהמספר מופיע בטקסט…</div>}
+                {webSearchError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{webSearchError}</p>}
+                {webSearchResults.length > 0 && <div className="space-y-3 border-t border-white/10 pt-4"><p className="text-xs leading-relaxed text-white/55">נמצאו {webSearchResults.length} עמודים עם הופעה מפורשת של המספר{webSearchIncomplete ? " · חלק מהחיפושים לא הושלמו — התוצאה חלקית" : ""}{webSearchRoute ? ` · נתיב חיבור: ${webSearchRoute === "tor" ? "Tor" : webSearchRoute === "direct-fallback" ? "חיבור רגיל לאחר fallback" : "חיבור רגיל"}` : ""}{webSearchDurationMs !== null ? ` · ${formatSearchDuration(webSearchDurationMs)}` : ""}</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p><p className="mt-1 text-[11px] text-emerald-200/75">המספר נמצא בטקסט העמוד · {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}<p className="text-[11px] leading-relaxed text-white/40">הופעת מספר בעמוד ציבורי אינה מוכיחה שמדובר בפרטי האדם הנכון או שהפרטים עדכניים.</p></div>}
+                {webSearchCompleted && webSearchResults.length === 0 && !webSearchError && <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">לא נמצאו עמודים שבהם המספר מופיע בטקסט שנשלף.{webSearchIncomplete ? " חלק מהחיפושים לא הושלמו, לכן זו בדיקה חלקית ולא הוכחה שלא קיימים עמודים נוספים." : ""}</p>}
+              </DialogContent>
+            </Dialog>
+          </section>
 
           {sourceFilter !== "facebook" ? <>
             <form onSubmit={runDetailSearch} className="space-y-4 rounded-2xl border border-white/10 bg-black/10 p-4 sm:p-5" aria-label="חיפוש לפי פרטים">
