@@ -18,7 +18,7 @@ import {
 } from "@/lib/full-dataset-search";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
+const BUILD_TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
@@ -72,6 +72,7 @@ function TextMatchModeSelector({ mode, onChange }: { mode: TextMatchMode; onChan
 }
 
 export default function GitHubPagesHome() {
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState(BUILD_TURNSTILE_SITE_KEY);
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const unlocked = sessionStartedAt !== null;
@@ -123,6 +124,17 @@ export default function GitHubPagesHome() {
   const resumeInFlightRef = useRef(false);
 
   useEffect(() => {
+    if (BUILD_TURNSTILE_SITE_KEY || !API_BASE) return;
+    void fetch(`${API_BASE}/api/public-config`, { credentials: "omit" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const config = await response.json() as { turnstileSiteKey?: string };
+        if (typeof config.turnstileSiteKey === "string") setTurnstileSiteKey(config.turnstileSiteKey);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
       const payload = await response.json() as { authenticated?: boolean; expiresAt?: string | null };
@@ -134,15 +146,15 @@ export default function GitHubPagesHome() {
   }, []);
 
   useEffect(() => {
-    if (unlocked || !TURNSTILE_SITE_KEY || !captchaContainerRef.current) return;
+    if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
     const renderCaptcha = () => {
       const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => void } }).turnstile;
-      if (turnstile && captchaContainerRef.current) turnstile.render(captchaContainerRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: (token: string) => setCaptchaToken(token), "expired-callback": () => setCaptchaToken(""), "error-callback": () => setCaptchaToken("") });
+      if (turnstile && captchaContainerRef.current) turnstile.render(captchaContainerRef.current, { sitekey: turnstileSiteKey, callback: (token: string) => setCaptchaToken(token), "expired-callback": () => setCaptchaToken(""), "error-callback": () => setCaptchaToken("") });
     };
     const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
     if (existing) { renderCaptcha(); return; }
     const script = document.createElement("script"); script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; script.async = true; script.defer = true; script.dataset.turnstile = "true"; script.onload = renderCaptcha; document.head.appendChild(script);
-  }, [unlocked]);
+  }, [unlocked, turnstileSiteKey]);
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); setFamilyDurationMs(null); };
   const exportSearchResults = async () => {
@@ -422,7 +434,7 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            {TURNSTILE_SITE_KEY ? <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי"/> : <p className="text-xs text-amber-200/80">אימות אנושי יופעל לאחר הגדרת CAPTCHA בשרת.</p>}
+            {turnstileSiteKey ? <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי"/> : <p className="text-xs text-amber-200/80">אימות אנושי יופעל לאחר הגדרת CAPTCHA בשרת.</p>}
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>

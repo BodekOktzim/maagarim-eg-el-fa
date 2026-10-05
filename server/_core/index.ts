@@ -43,6 +43,16 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/", (_req, res) => { res.status(200).json({ ok: true, service: "maagarim-web-search-api" }); });
   app.get("/healthz", (_req, res) => { res.status(200).json({ ok: true }); });
+  app.get("/api/public-config", (req, res) => {
+    const allowedOrigin = process.env.WEB_APP_ALLOWED_ORIGIN || "";
+    if (allowedOrigin && req.headers.origin === allowedOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Vary", "Origin");
+    }
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.json({ turnstileSiteKey: process.env.VITE_TURNSTILE_SITE_KEY ?? "" });
+  });
   const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
   const persisted = accessPool ? new accessPool() : null;
   if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); }

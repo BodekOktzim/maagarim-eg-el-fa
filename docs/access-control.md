@@ -8,7 +8,7 @@ Set these values in the Render service environment, never in Git:
 - `TURNSTILE_SECRET_KEY` — Cloudflare Turnstile server secret. Production login fails closed when it is missing.
 - `WEB_APP_ALLOWED_ORIGIN` — the exact browser origin, for example `https://bodekoktzim.github.io`.
 - `ADMIN_BOOTSTRAP_SECRET` — one-time secret used only to create the first admin.
-- `VITE_TURNSTILE_SITE_KEY` — public Turnstile site key used when building the browser bundle.
+- `VITE_TURNSTILE_SITE_KEY` — public Turnstile site key returned to GitHub Pages by `/api/public-config`; safe to expose, but configure it in Render.
 - `VITE_API_BASE_URL` — Render API URL when building the GitHub Pages bundle, for example `https://maagarim-web-search-api.onrender.com`.
 
 Existing service variables such as `TAVILY_API_KEY` must be preserved.
@@ -42,4 +42,5 @@ The endpoint refuses to create a second admin. Remove or rotate `ADMIN_BOOTSTRAP
 - Access sessions expire after 30 minutes, or sooner if the access code itself has a shorter fixed validity. Expiry is enforced server-side on every protected data request.
 - Search index/source range requests are proxied through the authenticated backend.
 - Login events, failed attempts and admin logins are written to PostgreSQL.
+- `/api/public-config` returns only the public Turnstile site key; it never returns the server-side secret.
 - The existing search code and data files are not modified or deleted by the access-control migration.

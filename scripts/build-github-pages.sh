@@ -10,7 +10,7 @@ TURNSTILE_SITE_KEY="${VITE_TURNSTILE_SITE_KEY:-}"
 node scripts/build-offline-data-manifest.mjs "$BUILD_ID"
 GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" VITE_API_BASE_URL="$API_BASE_URL" VITE_TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" pnpm exec vite build
 
-rm -rf docs assets __manus__
+rm -rf assets __manus__
 rm -f index.html .nojekyll
 rm -f service-worker.js service-worker-*.js pwa-version.json
 cp -a dist/public/. .
