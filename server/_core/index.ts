@@ -83,6 +83,9 @@ async function startServer() {
       res.setHeader("Cache-Control", "private, max-age=300");
       res.send(Buffer.from(await response.arrayBuffer()));
     });
+  } else {
+    app.all(["/api/access/*", "/api/admin/*", "/api/protected-range"], (_req, res) => res.status(503).json({ error: "מערכת ההרשאות אינה מחוברת למסד נתונים." }));
+    app.use(["/index-seek", "/search-index-full", "/datasets"], (_req, res) => res.status(503).json({ error: "נתוני החיפוש נעולים עד לחיבור מסד הנתונים." }));
   }
   app.use("/api/uploads", requireUploadAccessCode);
   app.use("/api/import-jobs", requireUploadAccessCode);
