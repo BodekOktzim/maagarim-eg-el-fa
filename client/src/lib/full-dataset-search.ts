@@ -5,6 +5,7 @@ const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagar
 const INDEX_ROOT = MEDIA_ROOT;
 const RAW_INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/main";
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
+const PROTECTED_API_ROOT = import.meta.env.MODE === "test" ? null : (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 type SourceKey = "agron2006" | "elector" | "facebook";
 
@@ -313,11 +314,17 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
     const request = (target: string) => fetchWithRetry(target, {
       headers: { Range: `bytes=${start}-${endInclusive}` },
       cache: "force-cache",
-      credentials: "omit",
+      credentials: "include",
     }, label);
-    let response = await request(url);
+    const shouldProxy = Boolean(PROTECTED_API_ROOT) && (url.startsWith(`${MEDIA_ROOT}/`) || url.startsWith(`${INDEX_ROOT}/`));
+    const proxyUrl = shouldProxy ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(url)}&start=${start}&end=${endInclusive}` : url;
+    let response = await request(proxyUrl);
     if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
-      response = await request(`${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`);
+      const fallbackUrl = `${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`;
+      const fallbackTarget = PROTECTED_API_ROOT
+        ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(fallbackUrl)}&start=${start}&end=${endInclusive}`
+        : fallbackUrl;
+      response = await request(fallbackTarget);
     }
     if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
     return response.arrayBuffer();

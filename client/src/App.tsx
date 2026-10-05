@@ -5,7 +5,8 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import GitHubPagesHome from "./pages/GitHubPagesHome";
-import Home from "./pages/Home";
+import Home from "@/pages/Home";
+import Admin from "@/pages/Admin";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -25,6 +26,9 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
+  if (window.location.pathname === "/admin" || window.location.pathname.endsWith("/admin")) {
+    return <ErrorBoundary><Admin /></ErrorBoundary>;
+  }
   if (__GITHUB_PAGES_DEMO__) {
     return <ErrorBoundary><GitHubPagesHome /></ErrorBoundary>;
   }

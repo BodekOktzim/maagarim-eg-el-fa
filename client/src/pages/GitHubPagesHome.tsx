@@ -17,9 +17,8 @@ import {
   type TextMatchMode,
 } from "@/lib/full-dataset-search";
 
-const PASSWORD_HASH = "3f46bdea034f311a14efe877f5592d84a7a6c97d9b917be3f55573311e6cdda7";
-const SESSION_KEY = `maagarim-pages-unlocked-${import.meta.env.VITE_BUILD_ID ?? "dev"}`;
-const AWAY_TTL_MS = 30 * 60 * 1000;
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
@@ -72,32 +71,14 @@ function TextMatchModeSelector({ mode, onChange }: { mode: TextMatchMode; onChan
   </section>;
 }
 
-function readSessionStart() {
-  const raw = sessionStorage.getItem(SESSION_KEY);
-  if (raw === "1") {
-    const migratedAt = Date.now();
-    sessionStorage.setItem(SESSION_KEY, String(migratedAt));
-    return migratedAt;
-  }
-  const startedAt = raw ? Number(raw) : NaN;
-  if (!Number.isFinite(startedAt) || startedAt <= 0 || Date.now() - startedAt >= AWAY_TTL_MS) {
-    sessionStorage.removeItem(SESSION_KEY);
-    return null;
-  }
-  return startedAt;
-}
-
-async function sha256(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export default function GitHubPagesHome() {
-  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(() => readSessionStart());
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const captchaContainerRef = useRef<HTMLDivElement>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -140,6 +121,28 @@ export default function GitHubPagesHome() {
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
+
+  useEffect(() => {
+    void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as { authenticated?: boolean; expiresAt?: string | null };
+      if (payload.authenticated) {
+        setSessionStartedAt(Date.now());
+        setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      }
+    }).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (unlocked || !TURNSTILE_SITE_KEY || !captchaContainerRef.current) return;
+    const renderCaptcha = () => {
+      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => void } }).turnstile;
+      if (turnstile && captchaContainerRef.current) turnstile.render(captchaContainerRef.current, { sitekey: TURNSTILE_SITE_KEY, callback: (token: string) => setCaptchaToken(token), "expired-callback": () => setCaptchaToken(""), "error-callback": () => setCaptchaToken("") });
+    };
+    const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
+    if (existing) { renderCaptcha(); return; }
+    const script = document.createElement("script"); script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; script.async = true; script.defer = true; script.dataset.turnstile = "true"; script.onload = renderCaptcha; document.head.appendChild(script);
+  }, [unlocked]);
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); setFamilyDurationMs(null); };
   const exportSearchResults = async () => {
@@ -192,16 +195,19 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
-    if (await sha256(password) !== PASSWORD_HASH) { setPasswordError("הסיסמה לא נכונה."); return; }
-    const startedAt = Date.now();
-    sessionStorage.setItem(SESSION_KEY, String(startedAt));
-    setPassword("");
-    setSessionStartedAt(startedAt);
+    try {
+      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, captchaToken: captchaToken || undefined }) });
+      const payload = await response.json() as { expiresAt?: string | null; error?: string };
+      if (!response.ok) throw new Error(payload.error || "הכניסה נכשלה.");
+      const startedAt = Date.now();
+      setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+    } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
   const lock = () => {
-    sessionStorage.removeItem(SESSION_KEY);
+    void fetch(`${API_BASE}/api/access/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);
     setSessionStartedAt(null);
+    setSessionExpiresAt(null);
     setResults([]);
     setSearched(false);
     setLastQuery("");
@@ -210,12 +216,12 @@ export default function GitHubPagesHome() {
 
   useEffect(() => {
     if (sessionStartedAt === null) return;
-    const remaining = Math.max(0, AWAY_TTL_MS - (Date.now() - sessionStartedAt));
-    const timeout = window.setTimeout(lock, remaining);
+    if (sessionExpiresAt === null) return;
+    const timeout = window.setTimeout(lock, Math.max(0, sessionExpiresAt - Date.now()));
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [sessionStartedAt]);
+  }, [sessionStartedAt, sessionExpiresAt]);
 
   const selectSource = (next: SourceFilter) => {
     setSourceFilter(next);
@@ -416,6 +422,7 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            {TURNSTILE_SITE_KEY ? <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי"/> : <p className="text-xs text-amber-200/80">אימות אנושי יופעל לאחר הגדרת CAPTCHA בשרת.</p>}
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>

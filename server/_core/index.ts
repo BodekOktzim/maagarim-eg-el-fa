@@ -14,6 +14,7 @@ import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 import { searchPublicPhone } from "../web-phone-search";
+import { accessStats, bootstrapAdmin, createAccessCode, getAccessSession, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode } from "../access-auth";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -42,7 +43,47 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/", (_req, res) => { res.status(200).json({ ok: true, service: "maagarim-web-search-api" }); });
   app.get("/healthz", (_req, res) => { res.status(200).json({ ok: true }); });
+  const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
+  const persisted = accessPool ? new accessPool() : null;
+  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); }
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
+  if (persisted) {
+    const pool = persisted.pool;
+    app.use(["/api/access", "/api/admin", "/api/protected-range"], (req, res, next) => {
+      const allowedOrigin = process.env.WEB_APP_ALLOWED_ORIGIN || "";
+      if (allowedOrigin && req.headers.origin === allowedOrigin) {
+        res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Admin-Bootstrap-Secret");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      }
+      if (req.method === "OPTIONS") { res.status(204).end(); return; }
+      next();
+    });
+    app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
+    app.post("/api/access/logout", async (req, res) => { await logoutAccess(pool, req, res); res.json({ success: true }); });
+    app.get("/api/access/me", async (req, res) => { const session = await getAccessSession(pool, req); res.json({ authenticated: Boolean(session), expiresAt: session?.expires_at?.toISOString() ?? null }); });
+    app.post("/api/admin/bootstrap", async (req, res) => { try { res.status(201).json(await bootstrapAdmin(pool, { bootstrapSecret: String(req.headers["x-admin-bootstrap-secret"] ?? req.body?.bootstrapSecret ?? ""), email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת מנהל נכשלה." }); } });
+    app.post("/api/admin/login", async (req, res) => { try { res.json(await loginAdmin(pool, req, res, { email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "התחברות מנהל נכשלה." }); } });
+    app.post("/api/admin/logout", async (req, res) => { await logoutAdmin(pool, req, res); res.json({ success: true }); });
+    app.get("/api/admin/stats", requireAdmin(pool), async (_req, res) => { res.json(await accessStats(pool)); });
+    app.get("/api/admin/access-codes", requireAdmin(pool), async (_req, res) => { res.json({ items: await listAccessCodes(pool) }); });
+    app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
+    app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
+    app.delete("/api/admin/access-codes/:id", requireAdmin(pool), async (req, res) => { await deleteAccessCode(pool, req.params.id); res.status(204).end(); });
+    app.get("/api/protected-range", requireAccess(pool), async (req, res) => {
+      let target: URL;
+      try { target = new URL(String(req.query.url ?? "")); } catch { res.status(400).json({ error: "כתובת נתונים לא תקינה." }); return; }
+      if (target.protocol !== "https:" || !["media.githubusercontent.com", "raw.githubusercontent.com"].includes(target.hostname)) { res.status(403).json({ error: "מקור נתונים לא מורשה." }); return; }
+      const start = Number(req.query.start); const end = Number(req.query.end);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 8_388_608) { res.status(416).json({ error: "טווח נתונים לא תקין." }); return; }
+      const response = await fetch(target, { headers: { Range: `bytes=${start}-${end}` } });
+      if (!response.ok) { res.status(response.status).end(); return; }
+      res.status(response.status === 206 ? 206 : 200).setHeader("Content-Type", response.headers.get("content-type") ?? "application/octet-stream");
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.send(Buffer.from(await response.arrayBuffer()));
+    });
+  }
   app.use("/api/uploads", requireUploadAccessCode);
   app.use("/api/import-jobs", requireUploadAccessCode);
   app.use("/api/web-phone-search", (req, res, next) => {
@@ -102,6 +143,7 @@ async function startServer() {
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
+    if (persisted) app.use(["/index-seek", "/search-index-full", "/datasets"], requireAccess(persisted.pool));
     serveStatic(app);
   }
 
