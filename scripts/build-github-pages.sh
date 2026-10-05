@@ -11,9 +11,10 @@ node scripts/build-offline-data-manifest.mjs "$BUILD_ID"
 GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" VITE_API_BASE_URL="$API_BASE_URL" VITE_TURNSTILE_SITE_KEY="$TURNSTILE_SITE_KEY" pnpm exec vite build
 
 rm -rf assets __manus__
-rm -f index.html .nojekyll
+rm -f index.html 404.html .nojekyll
 rm -f service-worker.js service-worker-*.js pwa-version.json
 cp -a dist/public/. .
+cp -a index.html 404.html
 rm -rf __manus__
 touch .nojekyll
 node scripts/build-pwa-assets.mjs "$ROOT" "$BUILD_ID" "/maagarim-eg-el-fa/"

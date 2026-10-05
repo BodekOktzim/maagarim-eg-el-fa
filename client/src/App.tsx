@@ -26,7 +26,8 @@ function Router() {
 // - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
 
 function App() {
-  if (window.location.pathname === "/admin" || window.location.pathname.endsWith("/admin")) {
+  const isAdminRoute = window.location.pathname === "/admin" || window.location.pathname.endsWith("/admin") || new URLSearchParams(window.location.search).get("admin") === "1";
+  if (isAdminRoute) {
     return <ErrorBoundary><Admin /></ErrorBoundary>;
   }
   if (__GITHUB_PAGES_DEMO__) {

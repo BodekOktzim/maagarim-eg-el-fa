@@ -15,7 +15,7 @@ Existing service variables such as `TAVILY_API_KEY` must be preserved.
 
 ## First admin
 
-After the service is connected to PostgreSQL and deployed, call the one-time endpoint from a secure machine:
+After the service is connected to PostgreSQL and deployed, open `/maagarim-eg-el-fa/admin`, choose **הקמת חשבון מנהל ראשון**, and enter the email, a password of at least 12 characters, and the bootstrap secret directly in the browser. The UI sends the secret in the `X-Admin-Bootstrap-Secret` header and never stores or displays it. Alternatively, call the one-time endpoint from a secure machine:
 
 ```bash
 curl -X POST "$RENDER_URL/api/admin/bootstrap" \

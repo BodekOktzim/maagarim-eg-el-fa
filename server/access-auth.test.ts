@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
-import { ACCESS_COOKIE, getAccessSession, hashSecret, loginWithAccessCode, verifySecret } from "./access-auth";
+import { ACCESS_COOKIE, bootstrapAdmin, getAccessSession, hashSecret, loginWithAccessCode, verifySecret } from "./access-auth";
 
 async function loginFixture(validityKind: "fixed" | "unlimited", validitySeconds: number | null) {
   const now = 1_800_000_000_000;
@@ -71,6 +71,50 @@ describe("access authentication primitives", () => {
       expect(String(vi.mocked(pool.query).mock.calls[1][0])).toContain("UPDATE access_sessions SET revoked_at");
     } finally {
       vi.restoreAllMocks();
+    }
+  });
+
+  it("creates the first admin only with the configured bootstrap secret and stores a password hash", async () => {
+    vi.stubEnv("ADMIN_BOOTSTRAP_SECRET", "test-bootstrap-secret");
+    const inserted: unknown[][] = [];
+    const pool = { query: vi.fn(async (sql: string, values?: unknown[]) => {
+      if (sql.startsWith("SELECT count(*)")) return { rows: [{ count: "0" }] };
+      inserted.push(values ?? []);
+      return { rows: [{ id: "admin-1", email: "admin@example.com" }] };
+    }) } as unknown as Pool;
+    try {
+      await expect(bootstrapAdmin(pool, { bootstrapSecret: "test-bootstrap-secret", email: " Admin@Example.com ", password: "a-strong-password" }))
+        .resolves.toEqual({ id: "admin-1", email: "admin@example.com" });
+      expect(inserted).toHaveLength(1);
+      expect(inserted[0][0]).toBe("admin@example.com");
+      expect(String(inserted[0][1])).toMatch(/^scrypt\$/);
+      expect(inserted[0][1]).not.toBe("a-strong-password");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("refuses to bootstrap a second admin", async () => {
+    vi.stubEnv("ADMIN_BOOTSTRAP_SECRET", "test-bootstrap-secret");
+    const pool = { query: vi.fn(async () => ({ rows: [{ count: "1" }] })) } as unknown as Pool;
+    try {
+      await expect(bootstrapAdmin(pool, { bootstrapSecret: "test-bootstrap-secret", email: "admin@example.com", password: "a-strong-password" }))
+        .rejects.toThrow("Admin כבר הוגדר.");
+      expect(pool.query).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("rejects an incorrect bootstrap secret before querying the database", async () => {
+    vi.stubEnv("ADMIN_BOOTSTRAP_SECRET", "test-bootstrap-secret");
+    const pool = { query: vi.fn() } as unknown as Pool;
+    try {
+      await expect(bootstrapAdmin(pool, { bootstrapSecret: "wrong-secret", email: "admin@example.com", password: "a-strong-password" }))
+        .rejects.toThrow("פרטי bootstrap שגויים.");
+      expect(pool.query).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 });
