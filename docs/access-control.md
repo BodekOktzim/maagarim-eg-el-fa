@@ -38,7 +38,8 @@ The endpoint refuses to create a second admin. Remove or rotate `ADMIN_BOOTSTRAP
 
 - Access passwords are stored as scrypt hashes.
 - Browser sessions use secure, HttpOnly, host-only cookies.
-- Session expiry is enforced server-side on every protected data request.
+- Browser cookies use `SameSite=None; Secure` because GitHub Pages and Render are cross-site; the backend only allows the exact configured GitHub Pages origin and credentials.
+- Access sessions expire after 30 minutes, or sooner if the access code itself has a shorter fixed validity. Expiry is enforced server-side on every protected data request.
 - Search index/source range requests are proxied through the authenticated backend.
 - Login events, failed attempts and admin logins are written to PostgreSQL.
 - The existing search code and data files are not modified or deleted by the access-control migration.
