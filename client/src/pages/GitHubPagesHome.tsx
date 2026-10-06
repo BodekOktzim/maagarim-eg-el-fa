@@ -79,7 +79,9 @@ export default function GitHubPagesHome() {
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaError, setCaptchaError] = useState("");
   const captchaContainerRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetIdRef = useRef<string | number | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -147,13 +149,37 @@ export default function GitHubPagesHome() {
 
   useEffect(() => {
     if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
+    let disposed = false;
+    let retryTimer: number | null = null;
+    const getTurnstile = () => (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string | number; reset?: (widgetId?: string | number) => void } }).turnstile;
     const renderCaptcha = () => {
-      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => void } }).turnstile;
-      if (turnstile && captchaContainerRef.current) turnstile.render(captchaContainerRef.current, { sitekey: turnstileSiteKey, callback: (token: string) => setCaptchaToken(token), "expired-callback": () => setCaptchaToken(""), "error-callback": () => setCaptchaToken("") });
+      const turnstile = getTurnstile();
+      if (disposed || !turnstile || !captchaContainerRef.current || captchaWidgetIdRef.current !== null) return Boolean(turnstile);
+      captchaWidgetIdRef.current = turnstile.render(captchaContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => { setCaptchaError(""); setCaptchaToken(token); },
+        "expired-callback": () => { setCaptchaToken(""); setCaptchaError("האימות האנושי פג. יש לבצע אותו שוב."); },
+        "error-callback": () => { setCaptchaToken(""); setCaptchaError("לא ניתן לטעון את האימות האנושי. נסה לרענן את הדף."); },
+      });
+      return true;
     };
     const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
-    if (existing) { renderCaptcha(); return; }
-    const script = document.createElement("script"); script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; script.async = true; script.defer = true; script.dataset.turnstile = "true"; script.onload = renderCaptcha; document.head.appendChild(script);
+    if (existing) {
+      if (!renderCaptcha()) retryTimer = window.setInterval(() => { if (renderCaptcha() && retryTimer !== null) { window.clearInterval(retryTimer); retryTimer = null; } }, 250);
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true; script.defer = true; script.dataset.turnstile = "true";
+      script.onload = () => { renderCaptcha(); };
+      script.onerror = () => setCaptchaError("לא ניתן לטעון את האימות האנושי. בדוק חוסם פרסומות או נסה רענון.");
+      document.head.appendChild(script);
+      retryTimer = window.setInterval(() => { if (renderCaptcha() && retryTimer !== null) { window.clearInterval(retryTimer); retryTimer = null; } }, 250);
+    }
+    return () => {
+      disposed = true;
+      if (retryTimer !== null) window.clearInterval(retryTimer);
+      captchaWidgetIdRef.current = null;
+    };
   }, [unlocked, turnstileSiteKey]);
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); setFamilyDurationMs(null); };
@@ -207,10 +233,16 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
+    if (turnstileSiteKey && !captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
       const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, captchaToken: captchaToken || undefined }) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
-      if (!response.ok) throw new Error(payload.error || "הכניסה נכשלה.");
+      if (!response.ok) {
+        const turnstile = (window as Window & { turnstile?: { reset?: (widgetId?: string | number) => void } }).turnstile;
+        turnstile?.reset?.(captchaWidgetIdRef.current ?? undefined);
+        setCaptchaToken("");
+        throw new Error(payload.error || "הכניסה נכשלה.");
+      }
       const startedAt = Date.now();
       setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
@@ -434,7 +466,7 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            {turnstileSiteKey ? <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי"/> : <p className="text-xs text-amber-200/80">אימות אנושי יופעל לאחר הגדרת CAPTCHA בשרת.</p>}
+            {turnstileSiteKey ? <><div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי"/>{captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}</> : <p className="text-xs text-amber-200/80">אימות אנושי יופעל לאחר הגדרת CAPTCHA בשרת.</p>}
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>
