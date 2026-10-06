@@ -88,7 +88,7 @@ function extractEntityLabels(result: WebPhoneResult) {
   const labels: string[] = [];
   const title = cleanCandidate(result.title);
   if (title.length >= 2 && title.length <= 100 && !GENERIC_TITLES.has(title.toLocaleLowerCase("he")) && !/^\+?[\d\s()./-]+$/.test(title)) labels.push(title);
-  const context = result.snippet;
+  const context = result.context || result.snippet;
   for (const pattern of [
     /(?:שם העסק|שם החברה|עסק|חברה|מותג|contact|business|company)\s*[:：-]\s*([^|,.;\n]{2,80})/i,
     /(?:צור קשר|להזמנות|whatsapp|טלפון)\s*[:：-]?\s*([^|.;\n]{2,80})/i,
@@ -117,7 +117,7 @@ export function enrichWebPhoneResults(results: WebPhoneResult[]) {
       domain: domainOf(result.url),
       platforms,
       socialProfiles: profile ? [profile] : [],
-      evidence: [{ source: result.source, url: result.url, title: result.title, foundText: result.snippet, matchedPhone: result.matchedPhone, matchLocation: result.matchLocation, query: result.query }],
+      evidence: [{ source: result.source, url: result.url, title: result.title, foundText: result.context || result.snippet, matchedPhone: result.matchedPhone, matchLocation: result.matchLocation, query: result.query }],
       entityLabels: extractEntityLabels(result),
     };
   });

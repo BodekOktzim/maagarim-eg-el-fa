@@ -12,6 +12,7 @@ export type WebPhoneResult = {
   matchLocation: "page-text" | "provider-snippet";
   relevanceScore: number;
   relevanceLabel: "גבוהה" | "בינונית" | "נמוכה";
+  context?: string;
 };
 
 type TavilyResult = { title?: string; url?: string; content?: string; raw_content?: string };
@@ -47,6 +48,10 @@ function findExactPhone(text: string, targetPhone: string) {
   return null;
 }
 
+function contextAround(text: string, start: number, end: number) {
+  return text.slice(Math.max(0, start - 260), Math.min(text.length, end + 260)).replace(/\s+/g, " ").trim();
+}
+
 function scoreResult(item: TavilyResult, match: { start: number; end: number }, query: string, matchLocation: WebPhoneResult["matchLocation"]) {
   const title = String(item.title ?? "").toLocaleLowerCase("he");
   const text = String(item.raw_content ?? "").toLocaleLowerCase("he");
@@ -75,6 +80,8 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
     const match = pageMatch ?? findExactPhone(snippetText, targetPhone);
     if (!match) continue;
     const matchLocation = pageMatch ? "page-text" : "provider-snippet";
+    const sourceText = pageMatch ? pageText : snippetText;
+    const context = contextAround(sourceText, match.start, match.end);
     const relevance = scoreResult(item, match, query, matchLocation);
     filtered.push({
       title: item.title || "ללא כותרת",
@@ -86,6 +93,7 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
       matchLocation,
       relevanceScore: relevance.score,
       relevanceLabel: relevance.label,
+      context,
     });
   }
   return filtered.sort((left, right) => right.relevanceScore - left.relevanceScore || left.url.localeCompare(right.url));
