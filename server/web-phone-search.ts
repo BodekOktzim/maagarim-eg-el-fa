@@ -1,5 +1,6 @@
 import axios from "axios";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { buildPhoneIntelligence, enrichWebPhoneResults } from "./web-phone-intelligence";
 
 export type WebPhoneResult = {
   title: string;
@@ -21,10 +22,11 @@ function normalizePhone(input: string) {
   const digits = input.replace(/\D/g, "");
   if (digits.length < 7 || digits.length > 15) throw new Error("מספר הטלפון אינו תקין.");
   const local = digits.startsWith("972") ? `0${digits.slice(3)}` : digits;
-  const international = local.startsWith("0") ? `+972${local.slice(1)}` : `+${local}`;
+  const internationalDigits = local.startsWith("0") ? `972${local.slice(1)}` : local;
+  const international = `+${internationalDigits}`;
   const dashed = local.length === 10 ? `${local.slice(0, 3)}-${local.slice(3)}` : local;
   const spaced = local.length === 10 ? `${local.slice(0, 3)} ${local.slice(3)}` : local;
-  return { local, international, variants: Array.from(new Set([local, dashed, spaced, international, international.replace("+", "+ ")])) };
+  return { local, international, variants: Array.from(new Set([local, international, internationalDigits, dashed, spaced, international.replace("+", "+ ")])) };
 }
 
 function canonicalPhoneDigits(input: string) {
@@ -91,13 +93,18 @@ export function filterExactPhoneResults(results: TavilyResult[], inputPhone: str
 
 export function buildQueries(phone: ReturnType<typeof normalizePhone>) {
   const quoted = phone.variants.map((value) => `"${value}"`);
+  const base = quoted.slice(0, 4).join(" OR ");
   return [
-    quoted.join(" OR "),
-    `(${quoted.slice(0, 3).join(" OR ")}) ישראל`,
-    `(${quoted.slice(0, 3).join(" OR ")}) Instagram OR Facebook OR TikTok OR LinkedIn`,
-    `(${quoted.slice(0, 3).join(" OR ")}) עסק OR שירות OR חברה OR טלפון OR WhatsApp`,
-    `(${quoted.slice(0, 2).join(" OR ")}) זיהוי OR אינדקס OR directory OR contact`,
+    base,
+    `(${base}) ישראל`,
+    `(${base}) Instagram OR Facebook OR TikTok OR LinkedIn OR YouTube`,
+    `(${base}) עסק OR שירות OR חברה OR טלפון OR WhatsApp`,
+    `(${quoted.slice(0, 3).join(" OR ")}) זיהוי OR אינדקס OR directory OR contact`,
     `${quoted[0]} ${quoted[3] ?? quoted[0]} ישראל`,
+    `site:facebook.com (${base})`,
+    `site:instagram.com (${base})`,
+    `site:linkedin.com (${base})`,
+    `site:tiktok.com (${base})`,
   ];
 }
 
@@ -146,5 +153,17 @@ export async function searchPublicPhone(input: string) {
   }
   if (successfulSearches === 0) throw new Error("ספק החיפוש לא הגיב. לא ניתן להציג תוצאות או להסיק שלא נמצאו תוצאות.");
   const results = Array.from(byUrl.values()).sort((left, right) => right.relevanceScore - left.relevanceScore || left.url.localeCompare(right.url));
-  return { phone, route, incomplete: successfulSearches < queries.length, limited: results.length > 100, results: results.slice(0, 100) };
+  const visibleResults = results.slice(0, 100);
+  const intelligence = enrichWebPhoneResults(visibleResults);
+  return {
+    phone: buildPhoneIntelligence(input),
+    route,
+    queries,
+    incomplete: successfulSearches < queries.length,
+    limited: results.length > 100,
+    results: intelligence.results,
+    groups: intelligence.groups,
+    analysis: intelligence.analysis,
+    sourceCount: new Set(visibleResults.map((result) => result.url)).size,
+  };
 }

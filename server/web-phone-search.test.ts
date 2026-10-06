@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildQueries, filterExactPhoneResults } from "./web-phone-search";
+import { buildPhoneIntelligence, enrichWebPhoneResults } from "./web-phone-intelligence";
 
 const query = '"0501234567"';
 
@@ -100,5 +101,23 @@ describe("filterExactPhoneResults", () => {
     ], "0501234567", query);
     expect(results[0].url).toBe("https://example.com/context");
     expect(results[0].relevanceScore).toBeGreaterThan(results[1].relevanceScore);
+  });
+
+  it("builds Israeli phone intelligence with local and international formats", () => {
+    const intelligence = buildPhoneIntelligence("+972 50-123-4567");
+    expect(intelligence).toMatchObject({ local: "0501234567", international: "+972501234567", country: "ישראל", likelyLineType: "mobile" });
+    expect(intelligence.formats).toContain("972501234567");
+    expect(intelligence.formats).toContain("050-1234567");
+  });
+
+  it("extracts public social evidence and groups repeated entity labels", () => {
+    const base = { source: "Tavily", query, matchedPhone: "050-1234567", relevanceScore: 80, relevanceLabel: "גבוהה" as const, matchLocation: "page-text" as const };
+    const { results, groups } = enrichWebPhoneResults([
+      { ...base, title: "דוגמה שירותים", url: "https://www.facebook.com/example", snippet: "צור קשר: 050-1234567" },
+      { ...base, title: "דוגמה שירותים", url: "https://example.co.il/contact", snippet: "עסק: דוגמה שירותים · 050-1234567" },
+    ]);
+    expect(results[0].socialProfiles[0]).toMatchObject({ platform: "facebook", username: "example" });
+    expect(groups[0]).toMatchObject({ label: "דוגמה שירותים", confidence: "possible", sourceCount: 2 });
+    expect(groups[0].evidence).toHaveLength(2);
   });
 });
