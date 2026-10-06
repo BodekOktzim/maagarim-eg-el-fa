@@ -85,3 +85,5 @@ CREATE INDEX IF NOT EXISTS idx_login_events_code ON login_events(access_code_id,
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_at DESC);
 
 ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT;
+ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_access_codes_expires ON access_codes(expires_at);
