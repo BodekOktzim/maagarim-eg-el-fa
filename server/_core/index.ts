@@ -14,7 +14,7 @@ import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 import { searchPublicPhone } from "../web-phone-search";
-import { accessStats, bootstrapAdmin, createAccessCode, getAccessSession, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode } from "../access-auth";
+import { accessStats, bootstrapAdmin, createAccessCode, getAccessSession, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode } from "../access-auth";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -81,6 +81,7 @@ async function startServer() {
     app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
     app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
     app.delete("/api/admin/access-codes/:id", requireAdmin(pool), async (req, res) => { await deleteAccessCode(pool, req.params.id); res.status(204).end(); });
+    app.get("/api/admin/access-codes/:id/reveal", requireAdmin(pool), async (req, res) => { try { res.json(await revealAccessCode(pool, req.params.id)); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "לא ניתן לחשוף את הסיסמה." }); } });
     app.get("/api/protected-range", requireAccess(pool), async (req, res) => {
       let target: URL;
       try { target = new URL(String(req.query.url ?? "")); } catch { res.status(400).json({ error: "כתובת נתונים לא תקינה." }); return; }

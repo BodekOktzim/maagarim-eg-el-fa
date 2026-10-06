@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS access_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code_hash TEXT NOT NULL UNIQUE,
+  secret_ciphertext TEXT,
   label TEXT,
   validity_kind TEXT NOT NULL DEFAULT 'unlimited',
   validity_seconds BIGINT,
@@ -82,3 +83,5 @@ CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(token_hash
 CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_login_events_code ON login_events(access_code_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs(created_at DESC);
+
+ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT;

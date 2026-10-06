@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
-import { LogOut, Plus, RefreshCw, ShieldCheck, Trash2, XCircle } from "lucide-react";
+import { Eye, EyeOff, LogOut, Plus, RefreshCw, ShieldCheck, Trash2, XCircle } from "lucide-react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 type Code = { id: string; label: string | null; validity_kind: string; validity_seconds: number | null; status: string; created_at: string; use_count: number; login_count: number; revoked_at: string | null };
 type Stats = Record<string, number>;
-type AccessPayload = { error?: string };
+type AccessPayload = { error?: string; password?: string };
+type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 async function api(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  const response = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   const payload = await response.json().catch(() => ({})) as AccessPayload & Record<string, any>;
   if (!response.ok) throw new Error(payload.error || "הפעולה נכשלה.");
   return payload;
@@ -32,145 +29,75 @@ export default function Admin() {
   const [label, setLabel] = useState("");
   const [validitySeconds, setValiditySeconds] = useState(1800);
   const [createdSecret, setCreatedSecret] = useState("");
+  const [revealedCodes, setRevealedCodes] = useState<Record<string, string>>({});
   const [busyCodeId, setBusyCodeId] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
+
+  useEffect(() => {
+    const manifest = document.createElement("link");
+    manifest.rel = "manifest";
+    manifest.href = `${import.meta.env.BASE_URL}admin-manifest.webmanifest`;
+    document.head.appendChild(manifest);
+    const onInstall = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPrompt); };
+    window.addEventListener("beforeinstallprompt", onInstall);
+    return () => { manifest.remove(); window.removeEventListener("beforeinstallprompt", onInstall); };
+  }, []);
 
   const load = async () => {
     try {
       const [nextStats, nextCodes] = await Promise.all([api("/api/admin/stats"), api("/api/admin/access-codes")]);
-      setStats(nextStats);
-      setCodes(nextCodes.items ?? []);
-      setLoggedIn(true);
-    } catch {
-      setLoggedIn(false);
-    }
+      setStats(nextStats); setCodes(nextCodes.items ?? []); setLoggedIn(true);
+    } catch { setLoggedIn(false); }
   };
-
   useEffect(() => { void load(); }, []);
 
-  const clearSetupFields = () => {
-    setPassword("");
-    setConfirmPassword("");
-    setBootstrapSecret("");
-  };
-
+  const clearSetupFields = () => { setPassword(""); setConfirmPassword(""); setBootstrapSecret(""); };
   const login = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setNotice("");
-    try {
-      await api("/api/admin/login", { method: "POST", body: JSON.stringify({ email, password }) });
-      clearSetupFields();
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "התחברות נכשלה.");
-    }
+    event.preventDefault(); setError(""); setNotice("");
+    try { await api("/api/admin/login", { method: "POST", body: JSON.stringify({ email, password }) }); clearSetupFields(); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : "התחברות נכשלה."); }
   };
-
   const bootstrap = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setNotice("");
-    if (password.length < 12) {
-      setError("סיסמת מנהל חייבת להכיל לפחות 12 תווים.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("אימות הסיסמה אינו תואם.");
-      return;
-    }
+    event.preventDefault(); setError(""); setNotice("");
+    if (password.length < 12) { setError("סיסמת מנהל חייבת להכיל לפחות 12 תווים."); return; }
+    if (password !== confirmPassword) { setError("אימות הסיסמה אינו תואם."); return; }
     try {
-      await api("/api/admin/bootstrap", {
-        method: "POST",
-        headers: { "X-Admin-Bootstrap-Secret": bootstrapSecret },
-        body: JSON.stringify({ email, password }),
-      });
-      clearSetupFields();
-      setMode("login");
-      setNotice("חשבון המנהל הראשון נוצר. כעת ניתן להתחבר. הסר או סובב את ADMIN_BOOTSTRAP_SECRET ב־Render.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "יצירת חשבון המנהל נכשלה.");
-    }
+      await api("/api/admin/bootstrap", { method: "POST", headers: { "X-Admin-Bootstrap-Secret": bootstrapSecret }, body: JSON.stringify({ email, password }) });
+      clearSetupFields(); setMode("login"); setNotice("חשבון המנהל הראשון נוצר. כעת ניתן להתחבר.");
+    } catch (e) { setError(e instanceof Error ? e.message : "יצירת חשבון המנהל נכשלה."); }
   };
-
-  const switchMode = (next: "login" | "bootstrap") => {
-    setMode(next);
-    setError("");
-    setNotice("");
-    clearSetupFields();
-  };
-
+  const switchMode = (next: "login" | "bootstrap") => { setMode(next); setError(""); setNotice(""); clearSetupFields(); };
   const create = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError("");
+    event.preventDefault(); setError(""); setNotice("");
     try {
       const result = await api("/api/admin/access-codes", { method: "POST", body: JSON.stringify({ password: newPassword || undefined, label, validitySeconds: validitySeconds || null }) });
-      setCreatedSecret(result.password);
-      setNewPassword("");
-      setLabel("");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "יצירת סיסמה נכשלה.");
-    }
+      setCreatedSecret(result.password ?? ""); setNewPassword(""); setLabel(""); await load();
+      setNotice("הקוד נוצר ונשמר מוצפן. ניתן להציג אותו שוב באמצעות סמל העין.");
+    } catch (e) { setError(e instanceof Error ? e.message : "יצירת סיסמה נכשלה."); }
   };
-
-  const logout = async () => {
-    await api("/api/admin/logout", { method: "POST" });
-    setLoggedIn(false);
-  };
-
+  const logout = async () => { await api("/api/admin/logout", { method: "POST" }); setLoggedIn(false); };
   const revoke = async (id: string, disconnect: boolean) => {
-    setError("");
-    setBusyCodeId(id);
-    try {
-      await api(`/api/admin/access-codes/${id}/revoke`, { method: "POST", body: JSON.stringify({ disconnect }) });
-      setCodes((current) => current.map((code) => code.id === id ? { ...code, status: "revoked", revoked_at: new Date().toISOString() } : code));
-      setNotice(disconnect ? "הקוד בוטל וכל החיבורים הפעילים שלו נותקו." : "הקוד בוטל.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "ביטול הקוד נכשל.");
-    } finally {
-      setBusyCodeId(null);
-    }
+    setError(""); setBusyCodeId(id);
+    try { await api(`/api/admin/access-codes/${id}/revoke`, { method: "POST", body: JSON.stringify({ disconnect }) }); setCodes((current) => current.map((code) => code.id === id ? { ...code, status: "revoked", revoked_at: new Date().toISOString() } : code)); setNotice(disconnect ? "הקוד בוטל וכל החיבורים הפעילים שלו נותקו." : "הקוד בוטל."); }
+    catch (e) { setError(e instanceof Error ? e.message : "ביטול הקוד נכשל."); }
+    finally { setBusyCodeId(null); }
   };
-
   const remove = async (id: string) => {
-    setError("");
-    setBusyCodeId(id);
-    try {
-      await api(`/api/admin/access-codes/${id}`, { method: "DELETE" });
-      setCodes((current) => current.filter((code) => code.id !== id));
-      setNotice("הקוד נמחק מהרשימה.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "מחיקת הקוד נכשלה.");
-    } finally {
-      setBusyCodeId(null);
-    }
+    setError(""); setBusyCodeId(id);
+    try { await api(`/api/admin/access-codes/${id}`, { method: "DELETE" }); setCodes((current) => current.filter((code) => code.id !== id)); setNotice("הקוד נמחק מהרשימה."); }
+    catch (e) { setError(e instanceof Error ? e.message : "מחיקת הקוד נכשלה."); }
+    finally { setBusyCodeId(null); }
   };
+  const reveal = async (id: string) => {
+    if (revealedCodes[id]) { setRevealedCodes((current) => { const next = { ...current }; delete next[id]; return next; }); return; }
+    setError(""); setBusyCodeId(id);
+    try { const result = await api(`/api/admin/access-codes/${id}/reveal`); setRevealedCodes((current) => ({ ...current, [id]: result.password ?? "" })); }
+    catch (e) { setError(e instanceof Error ? e.message : "לא ניתן להציג את הסיסמה."); }
+    finally { setBusyCodeId(null); }
+  };
+  const installAdmin = async () => { if (!installPrompt) return; await installPrompt.prompt(); await installPrompt.userChoice; setInstallPrompt(null); };
 
-  if (!loggedIn) {
-    return (
-      <main dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-8 text-slate-100">
-        <section className="w-full max-w-md space-y-4 rounded-3xl border border-fuchsia-200/15 bg-[#20102b] p-6 sm:p-7">
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="text-fuchsia-200" />
-            <h1 className="text-2xl font-bold">{mode === "login" ? "פאנל מנהל" : "הקמת מנהל ראשון"}</h1>
-          </div>
-          {mode === "bootstrap" && <p className="text-sm leading-6 text-white/70">ההקמה זמינה פעם אחת בלבד. בחר דוא״ל וסיסמה חזקה; הפרטים נשלחים ישירות לשרת המאובטח.</p>}
-          <form onSubmit={mode === "login" ? login : bootstrap} className="space-y-3">
-            <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="דוא״ל מנהל" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900" />
-            {mode === "bootstrap" && <input required type="password" autoComplete="off" value={bootstrapSecret} onChange={(e) => setBootstrapSecret(e.target.value)} placeholder="סוד ההקמה מ־Render" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900" />}
-            <input required type="password" minLength={mode === "bootstrap" ? 12 : undefined} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "login" ? "סיסמת מנהל" : "סיסמה חדשה (לפחות 12 תווים)"} className="h-12 w-full rounded-xl bg-white px-4 text-slate-900" />
-            {mode === "bootstrap" && <input required type="password" minLength={12} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="אימות הסיסמה" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900" />}
-            {notice && <p role="status" className="rounded-xl border border-emerald-200/20 bg-emerald-200/10 p-3 text-sm leading-6 text-emerald-100">{notice}</p>}
-            {error && <p role="alert" className="text-sm text-rose-200">{error}</p>}
-            <button className="h-12 w-full rounded-xl bg-[#f2a9d2] font-semibold text-[#30123e]">{mode === "login" ? "כניסה" : "צור חשבון מנהל"}</button>
-          </form>
-          <button type="button" onClick={() => switchMode(mode === "login" ? "bootstrap" : "login")} className="w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75 hover:bg-white/5">
-            {mode === "login" ? "הקמת חשבון מנהל ראשון" : "חזרה לכניסה"}
-          </button>
-        </section>
-      </main>
-    );
-  }
+  if (!loggedIn) return <main dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-8 text-slate-100"><section className="w-full max-w-md space-y-4 rounded-3xl border border-fuchsia-200/15 bg-[#20102b] p-6 sm:p-7"><div className="flex items-center gap-3"><ShieldCheck className="text-fuchsia-200"/><h1 className="text-2xl font-bold">{mode === "login" ? "פאנל מנהל" : "הקמת מנהל ראשון"}</h1></div>{mode === "bootstrap" && <p className="text-sm leading-6 text-white/70">ההקמה זמינה פעם אחת בלבד. בחר דוא״ל וסיסמה חזקה.</p>}<form onSubmit={mode === "login" ? login : bootstrap} className="space-y-3"><input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="דוא״ל מנהל" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900"/>{mode === "bootstrap" && <input required type="password" value={bootstrapSecret} onChange={(e) => setBootstrapSecret(e.target.value)} placeholder="סוד ההקמה מ־Render" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900"/>}<input required type="password" minLength={mode === "bootstrap" ? 12 : undefined} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "login" ? "סיסמת מנהל" : "סיסמה חדשה (לפחות 12 תווים)"} className="h-12 w-full rounded-xl bg-white px-4 text-slate-900"/>{mode === "bootstrap" && <input required type="password" minLength={12} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="אימות הסיסמה" className="h-12 w-full rounded-xl bg-white px-4 text-slate-900"/>}{notice && <p role="status" className="rounded-xl bg-emerald-200/10 p-3 text-sm text-emerald-100">{notice}</p>}{error && <p role="alert" className="text-sm text-rose-200">{error}</p>}<button className="h-12 w-full rounded-xl bg-[#f2a9d2] font-semibold text-[#30123e]">{mode === "login" ? "כניסה" : "צור חשבון מנהל"}</button></form><button type="button" onClick={() => switchMode(mode === "login" ? "bootstrap" : "login")} className="w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">{mode === "login" ? "הקמת חשבון מנהל ראשון" : "חזרה לכניסה"}</button></section></main>;
 
-  return <main dir="rtl" className="min-h-screen bg-[#100b17] px-4 py-6 text-slate-100 sm:px-8"><header className="mx-auto flex max-w-6xl items-center justify-between"><h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="text-fuchsia-200"/>פאנל מנהל</h1><div className="flex gap-2"><button onClick={() => void load()} className="rounded-xl border border-white/15 px-3 py-2"><RefreshCw size={16}/></button><button onClick={() => void logout()} className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2"><LogOut size={16}/>יציאה</button></div></header><section className="mx-auto mt-6 grid max-w-6xl grid-cols-2 gap-3 sm:grid-cols-4">{[["כניסות",stats?.total_logins],["היום",stats?.today_logins],["Sessions",stats?.active_sessions],["כשלונות",stats?.failed_logins]].map(([label,value]) => <article key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.05] p-4"><p className="text-xs text-white/55">{label}</p><p className="mt-2 text-2xl font-bold">{value ?? 0}</p></article>)}</section><section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">צור סיסמת גישה</h2><p className="mt-2 text-sm leading-6 text-white/60">הסיסמה מוצגת לאחר היצירה בלבד. לאחר רענון לא ניתן לשחזר אותה, כי השרת שומר hash בלבד.</p><form onSubmit={create} className="mt-4 grid gap-3 sm:grid-cols-4"><input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="ריק = אוטומטית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="תווית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><select value={validitySeconds} onChange={(e) => setValiditySeconds(Number(e.target.value))} className="h-11 rounded-xl bg-white px-3 text-slate-900"><option value={1800}>30 דקות</option><option value={3600}>שעה</option><option value={86400}>יום</option><option value={604800}>שבוע</option><option value={null as unknown as number}>ללא הגבלה</option></select><button className="flex items-center justify-center gap-2 rounded-xl bg-fuchsia-200 px-4 font-semibold text-[#30123e]"><Plus size={16}/>צור</button></form>{createdSecret && <p className="mt-4 rounded-xl border border-emerald-200/20 bg-emerald-200/10 p-3 text-emerald-100">סיסמת הגישה — יש להעתיק עכשיו: <strong dir="ltr">{createdSecret}</strong></p>}{notice && <p role="status" className="mt-3 text-sm text-emerald-200">{notice}</p>}{error && <p role="alert" className="mt-3 text-sm text-rose-200">{error}</p>}</section><section className="mx-auto mt-6 max-w-6xl overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">סיסמאות גישה</h2><table className="mt-4 w-full min-w-[720px] text-right text-sm"><thead className="text-white/50"><tr><th className="p-2">תווית</th><th className="p-2">תוקף</th><th className="p-2">סטטוס</th><th className="p-2">שימושים</th><th className="p-2">פעולות</th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t border-white/10"><td className="p-2">{code.label || "—"}</td><td className="p-2">{code.validity_kind === "unlimited" ? "ללא הגבלה" : `${Math.round((code.validity_seconds ?? 0) / 60)} דקות`}</td><td className="p-2">{code.status}</td><td className="p-2">{code.use_count} / {code.login_count}</td><td className="flex gap-2 p-2"><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, false)} className="rounded-lg border border-amber-200/20 px-2 py-1 text-amber-100 disabled:opacity-50">ביטול</button><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, true)} title="ביטול וניתוק כל החיבורים" className="rounded-lg border border-rose-200/20 px-2 py-1 text-rose-100 disabled:opacity-50"><XCircle size={14}/></button><button disabled={busyCodeId === code.id} onClick={() => void remove(code.id)} title="מחיקה מהרשימה" className="rounded-lg border border-white/15 px-2 py-1 text-white/70 disabled:opacity-50"><Trash2 size={14}/></button></td></tr>)}</tbody></table></section></main>;
+  return <main dir="rtl" className="min-h-screen bg-[#100b17] px-4 py-6 text-slate-100 sm:px-8"><header className="mx-auto flex max-w-6xl items-center justify-between"><h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="text-fuchsia-200"/>פאנל מנהל</h1><div className="flex flex-wrap justify-end gap-2">{installPrompt && <button onClick={() => void installAdmin()} className="rounded-xl border border-fuchsia-200/30 px-3 py-2 text-fuchsia-100">התקן כאפליקציה</button>}<button onClick={() => void load()} className="rounded-xl border border-white/15 px-3 py-2"><RefreshCw size={16}/></button><button onClick={() => void logout()} className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2"><LogOut size={16}/>יציאה</button></div></header><section className="mx-auto mt-6 grid max-w-6xl grid-cols-2 gap-3 sm:grid-cols-4">{[["כניסות",stats?.total_logins],["היום",stats?.today_logins],["Sessions",stats?.active_sessions],["כשלונות",stats?.failed_logins]].map(([label,value]) => <article key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.05] p-4"><p className="text-xs text-white/55">{label}</p><p className="mt-2 text-2xl font-bold">{value ?? 0}</p></article>)}</section><section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">צור סיסמת גישה</h2><p className="mt-2 text-sm leading-6 text-white/60">הסיסמה נשמרת בהאש ובהצפנה לשרת. סמל העין מציג אותה רק למנהל המחובר.</p><form onSubmit={create} className="mt-4 grid gap-3 sm:grid-cols-4"><input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="ריק = אוטומטית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="תווית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><select value={validitySeconds} onChange={(e) => setValiditySeconds(Number(e.target.value))} className="h-11 rounded-xl bg-white px-3 text-slate-900"><option value={1800}>30 דקות</option><option value={3600}>שעה</option><option value={86400}>יום</option><option value={604800}>שבוע</option><option value={0}>ללא הגבלה</option></select><button className="flex items-center justify-center gap-2 rounded-xl bg-fuchsia-200 px-4 font-semibold text-[#30123e]"><Plus size={16}/>צור</button></form>{createdSecret && <p className="mt-4 rounded-xl border border-emerald-200/20 bg-emerald-200/10 p-3 text-emerald-100">סיסמת הגישה החדשה: <strong dir="ltr">{createdSecret}</strong></p>}{notice && <p role="status" className="mt-3 text-sm text-emerald-200">{notice}</p>}{error && <p role="alert" className="mt-3 text-sm text-rose-200">{error}</p>}</section><section className="mx-auto mt-6 max-w-6xl overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">סיסמאות גישה</h2><table className="mt-4 w-full min-w-[820px] text-right text-sm"><thead className="text-white/50"><tr><th className="p-2">סיסמה</th><th className="p-2">תווית</th><th className="p-2">תוקף</th><th className="p-2">סטטוס</th><th className="p-2">שימושים</th><th className="p-2">פעולות</th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t border-white/10"><td className="p-2"><span dir="ltr" className="font-mono">{revealedCodes[code.id] ?? "••••••••"}</span><button onClick={() => void reveal(code.id)} disabled={busyCodeId === code.id} title={revealedCodes[code.id] ? "הסתר סיסמה" : "הצג סיסמה"} className="mr-2 rounded-lg border border-white/15 p-1 text-white/75 disabled:opacity-50">{revealedCodes[code.id] ? <EyeOff size={14}/> : <Eye size={14}/>}</button></td><td className="p-2">{code.label || "—"}</td><td className="p-2">{code.validity_kind === "unlimited" ? "ללא הגבלה" : `${Math.round((code.validity_seconds ?? 0) / 60)} דקות`}</td><td className="p-2">{code.status}</td><td className="p-2">{code.use_count} / {code.login_count}</td><td className="flex gap-2 p-2"><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, false)} className="rounded-lg border border-amber-200/20 px-2 py-1 text-amber-100 disabled:opacity-50">ביטול</button><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, true)} title="ביטול וניתוק כל החיבורים" className="rounded-lg border border-rose-200/20 px-2 py-1 text-rose-100 disabled:opacity-50"><XCircle size={14}/></button><button disabled={busyCodeId === code.id} onClick={() => void remove(code.id)} title="מחיקה מהרשימה" className="rounded-lg border border-white/15 px-2 py-1 text-white/70 disabled:opacity-50"><Trash2 size={14}/></button></td></tr>)}</tbody></table></section></main>;
 }

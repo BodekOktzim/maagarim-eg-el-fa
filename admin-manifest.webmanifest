@@ -1,0 +1,16 @@
+{
+  "name": "OSINT Search — פאנל מנהל",
+  "short_name": "פאנל מנהל",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/maagarim-eg-el-fa/admin",
+  "scope": "/maagarim-eg-el-fa/",
+  "display": "standalone",
+  "background_color": "#100b17",
+  "theme_color": "#100b17",
+  "description": "פאנל ניהול מאובטח למערכת OSINT Search",
+  "icons": [
+    { "src": "/maagarim-eg-el-fa/pwa-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/maagarim-eg-el-fa/pwa-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
