@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut, Plus, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
+import { LogOut, Plus, RefreshCw, ShieldCheck, Trash2, XCircle } from "lucide-react";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 type Code = { id: string; label: string | null; validity_kind: string; validity_seconds: number | null; status: string; created_at: string; use_count: number; login_count: number; revoked_at: string | null };
@@ -32,6 +32,7 @@ export default function Admin() {
   const [label, setLabel] = useState("");
   const [validitySeconds, setValiditySeconds] = useState(1800);
   const [createdSecret, setCreatedSecret] = useState("");
+  const [busyCodeId, setBusyCodeId] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -118,8 +119,31 @@ export default function Admin() {
   };
 
   const revoke = async (id: string, disconnect: boolean) => {
-    await api(`/api/admin/access-codes/${id}/revoke`, { method: "POST", body: JSON.stringify({ disconnect }) });
-    await load();
+    setError("");
+    setBusyCodeId(id);
+    try {
+      await api(`/api/admin/access-codes/${id}/revoke`, { method: "POST", body: JSON.stringify({ disconnect }) });
+      setCodes((current) => current.map((code) => code.id === id ? { ...code, status: "revoked", revoked_at: new Date().toISOString() } : code));
+      setNotice(disconnect ? "הקוד בוטל וכל החיבורים הפעילים שלו נותקו." : "הקוד בוטל.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "ביטול הקוד נכשל.");
+    } finally {
+      setBusyCodeId(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setError("");
+    setBusyCodeId(id);
+    try {
+      await api(`/api/admin/access-codes/${id}`, { method: "DELETE" });
+      setCodes((current) => current.filter((code) => code.id !== id));
+      setNotice("הקוד נמחק מהרשימה.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "מחיקת הקוד נכשלה.");
+    } finally {
+      setBusyCodeId(null);
+    }
   };
 
   if (!loggedIn) {
@@ -148,5 +172,5 @@ export default function Admin() {
     );
   }
 
-  return <main dir="rtl" className="min-h-screen bg-[#100b17] px-4 py-6 text-slate-100 sm:px-8"><header className="mx-auto flex max-w-6xl items-center justify-between"><h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="text-fuchsia-200"/>פאנל מנהל</h1><div className="flex gap-2"><button onClick={() => void load()} className="rounded-xl border border-white/15 px-3 py-2"><RefreshCw size={16}/></button><button onClick={() => void logout()} className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2"><LogOut size={16}/>יציאה</button></div></header><section className="mx-auto mt-6 grid max-w-6xl grid-cols-2 gap-3 sm:grid-cols-4">{[["כניסות",stats?.total_logins],["היום",stats?.today_logins],["Sessions",stats?.active_sessions],["כשלונות",stats?.failed_logins]].map(([label,value]) => <article key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.05] p-4"><p className="text-xs text-white/55">{label}</p><p className="mt-2 text-2xl font-bold">{value ?? 0}</p></article>)}</section><section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">צור סיסמת גישה</h2><form onSubmit={create} className="mt-4 grid gap-3 sm:grid-cols-4"><input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="ריק = אוטומטית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="תווית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><select value={validitySeconds} onChange={(e) => setValiditySeconds(Number(e.target.value))} className="h-11 rounded-xl bg-white px-3 text-slate-900"><option value={1800}>30 דקות</option><option value={3600}>שעה</option><option value={86400}>יום</option><option value={604800}>שבוע</option><option value={null as unknown as number}>ללא הגבלה</option></select><button className="flex items-center justify-center gap-2 rounded-xl bg-fuchsia-200 px-4 font-semibold text-[#30123e]"><Plus size={16}/>צור</button></form>{createdSecret && <p className="mt-4 rounded-xl border border-emerald-200/20 bg-emerald-200/10 p-3 text-emerald-100">סיסמת הגישה — יש להעתיק עכשיו: <strong dir="ltr">{createdSecret}</strong></p>}{error && <p className="mt-3 text-sm text-rose-200">{error}</p>}</section><section className="mx-auto mt-6 max-w-6xl overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">סיסמאות גישה</h2><table className="mt-4 w-full min-w-[720px] text-right text-sm"><thead className="text-white/50"><tr><th className="p-2">תווית</th><th className="p-2">תוקף</th><th className="p-2">סטטוס</th><th className="p-2">שימושים</th><th className="p-2">פעולות</th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t border-white/10"><td className="p-2">{code.label || "—"}</td><td className="p-2">{code.validity_kind === "unlimited" ? "ללא הגבלה" : `${Math.round((code.validity_seconds ?? 0) / 60)} דקות`}</td><td className="p-2">{code.status}</td><td className="p-2">{code.use_count} / {code.login_count}</td><td className="flex gap-2 p-2"><button disabled={code.status !== "active"} onClick={() => void revoke(code.id, false)} className="rounded-lg border border-amber-200/20 px-2 py-1 text-amber-100">ביטול</button><button disabled={code.status !== "active"} onClick={() => void revoke(code.id, true)} className="rounded-lg border border-rose-200/20 px-2 py-1 text-rose-100"><XCircle size={14}/></button></td></tr>)}</tbody></table></section></main>;
+  return <main dir="rtl" className="min-h-screen bg-[#100b17] px-4 py-6 text-slate-100 sm:px-8"><header className="mx-auto flex max-w-6xl items-center justify-between"><h1 className="flex items-center gap-2 text-2xl font-bold"><ShieldCheck className="text-fuchsia-200"/>פאנל מנהל</h1><div className="flex gap-2"><button onClick={() => void load()} className="rounded-xl border border-white/15 px-3 py-2"><RefreshCw size={16}/></button><button onClick={() => void logout()} className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2"><LogOut size={16}/>יציאה</button></div></header><section className="mx-auto mt-6 grid max-w-6xl grid-cols-2 gap-3 sm:grid-cols-4">{[["כניסות",stats?.total_logins],["היום",stats?.today_logins],["Sessions",stats?.active_sessions],["כשלונות",stats?.failed_logins]].map(([label,value]) => <article key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.05] p-4"><p className="text-xs text-white/55">{label}</p><p className="mt-2 text-2xl font-bold">{value ?? 0}</p></article>)}</section><section className="mx-auto mt-6 max-w-6xl rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">צור סיסמת גישה</h2><p className="mt-2 text-sm leading-6 text-white/60">הסיסמה מוצגת לאחר היצירה בלבד. לאחר רענון לא ניתן לשחזר אותה, כי השרת שומר hash בלבד.</p><form onSubmit={create} className="mt-4 grid gap-3 sm:grid-cols-4"><input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="ריק = אוטומטית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="תווית" className="h-11 rounded-xl bg-white px-3 text-slate-900"/><select value={validitySeconds} onChange={(e) => setValiditySeconds(Number(e.target.value))} className="h-11 rounded-xl bg-white px-3 text-slate-900"><option value={1800}>30 דקות</option><option value={3600}>שעה</option><option value={86400}>יום</option><option value={604800}>שבוע</option><option value={null as unknown as number}>ללא הגבלה</option></select><button className="flex items-center justify-center gap-2 rounded-xl bg-fuchsia-200 px-4 font-semibold text-[#30123e]"><Plus size={16}/>צור</button></form>{createdSecret && <p className="mt-4 rounded-xl border border-emerald-200/20 bg-emerald-200/10 p-3 text-emerald-100">סיסמת הגישה — יש להעתיק עכשיו: <strong dir="ltr">{createdSecret}</strong></p>}{notice && <p role="status" className="mt-3 text-sm text-emerald-200">{notice}</p>}{error && <p role="alert" className="mt-3 text-sm text-rose-200">{error}</p>}</section><section className="mx-auto mt-6 max-w-6xl overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-5"><h2 className="text-lg font-semibold">סיסמאות גישה</h2><table className="mt-4 w-full min-w-[720px] text-right text-sm"><thead className="text-white/50"><tr><th className="p-2">תווית</th><th className="p-2">תוקף</th><th className="p-2">סטטוס</th><th className="p-2">שימושים</th><th className="p-2">פעולות</th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t border-white/10"><td className="p-2">{code.label || "—"}</td><td className="p-2">{code.validity_kind === "unlimited" ? "ללא הגבלה" : `${Math.round((code.validity_seconds ?? 0) / 60)} דקות`}</td><td className="p-2">{code.status}</td><td className="p-2">{code.use_count} / {code.login_count}</td><td className="flex gap-2 p-2"><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, false)} className="rounded-lg border border-amber-200/20 px-2 py-1 text-amber-100 disabled:opacity-50">ביטול</button><button disabled={code.status !== "active" || busyCodeId === code.id} onClick={() => void revoke(code.id, true)} title="ביטול וניתוק כל החיבורים" className="rounded-lg border border-rose-200/20 px-2 py-1 text-rose-100 disabled:opacity-50"><XCircle size={14}/></button><button disabled={busyCodeId === code.id} onClick={() => void remove(code.id)} title="מחיקה מהרשימה" className="rounded-lg border border-white/15 px-2 py-1 text-white/70 disabled:opacity-50"><Trash2 size={14}/></button></td></tr>)}</tbody></table></section></main>;
 }

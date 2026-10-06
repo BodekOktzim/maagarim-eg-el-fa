@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
-import { ACCESS_COOKIE, bootstrapAdmin, getAccessSession, hashSecret, loginWithAccessCode, verifySecret } from "./access-auth";
+import { ACCESS_COOKIE, bootstrapAdmin, deleteAccessCode, getAccessSession, hashSecret, loginWithAccessCode, revokeAccessCode, verifySecret } from "./access-auth";
 
 async function loginFixture(validityKind: "fixed" | "unlimited", validitySeconds: number | null) {
   const now = 1_800_000_000_000;
@@ -116,5 +116,20 @@ describe("access authentication primitives", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("revokes a code and optionally disconnects its active sessions", async () => {
+    const pool = { query: vi.fn(async () => ({ rows: [] })) } as unknown as Pool;
+    await revokeAccessCode(pool, "code-1", true);
+    expect(pool.query).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(pool.query).mock.calls[0][0])).toContain("UPDATE access_codes SET status = 'revoked'");
+    expect(String(vi.mocked(pool.query).mock.calls[1][0])).toContain("UPDATE access_sessions SET revoked_at");
+  });
+
+  it("soft-deletes a code without exposing its secret", async () => {
+    const pool = { query: vi.fn(async () => ({ rows: [] })) } as unknown as Pool;
+    await deleteAccessCode(pool, "code-1");
+    expect(String(vi.mocked(pool.query).mock.calls[0][0])).toContain("UPDATE access_codes SET status = 'deleted'");
+    expect(String(vi.mocked(pool.query).mock.calls[0][0])).not.toContain("code_hash");
   });
 });
