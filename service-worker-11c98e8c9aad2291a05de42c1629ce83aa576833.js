@@ -1,18 +1,9 @@
-<<<<<<<< HEAD:service-worker-689ce68e8e47e8449b2cef5df980fd5975740c47.js
-/* OSINT Search release 689ce68e8e47e8449b2cef5df980fd5975740c47; user-approved, version-pinned offline shell. */
-const BUILD_ID = "689ce68e8e47e8449b2cef5df980fd5975740c47";
+/* OSINT Search release 11c98e8c9aad2291a05de42c1629ce83aa576833; user-approved, version-pinned offline shell. */
+const BUILD_ID = "11c98e8c9aad2291a05de42c1629ce83aa576833";
 const BASE_PATH = "/maagarim-eg-el-fa/";
 const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
 const CACHE_PREFIX = "osint-search-shell-";
-const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-B-Yz1FGb.js","/maagarim-eg-el-fa/assets/index-DKD1cmL0.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
-========
-/* OSINT Search release 4f0de8e903b175a85ef3e0451519b96c694de55d; user-approved, version-pinned offline shell. */
-const BUILD_ID = "4f0de8e903b175a85ef3e0451519b96c694de55d";
-const BASE_PATH = "/maagarim-eg-el-fa/";
-const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
-const CACHE_PREFIX = "osint-search-shell-";
-const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-BCVa7hoH.js","/maagarim-eg-el-fa/assets/index-C8exQDhg.css","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
->>>>>>>> baaea2a (Add secure admin password reveal and PWA):service-worker-4f0de8e903b175a85ef3e0451519b96c694de55d.js
+const SHELL_RESOURCES = ["/maagarim-eg-el-fa/assets/index-Cadb2txT.css","/maagarim-eg-el-fa/assets/index-CywLIrwN.js","/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js","/maagarim-eg-el-fa/index-seek/offline-data-manifest.json","/maagarim-eg-el-fa/index.html","/maagarim-eg-el-fa/manifest.webmanifest","/maagarim-eg-el-fa/pwa-icon-192.png","/maagarim-eg-el-fa/pwa-icon-512.png"];
 const INDEX_URL = BASE_PATH + "index.html";
 const VERSION_PATH = BASE_PATH + "pwa-version.json";
 
