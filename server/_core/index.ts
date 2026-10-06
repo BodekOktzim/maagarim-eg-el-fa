@@ -51,7 +51,7 @@ async function startServer() {
       res.setHeader("Vary", "Origin");
     }
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.json({ turnstileSiteKey: process.env.VITE_TURNSTILE_SITE_KEY ?? "" });
+    res.json({ ok: true });
   });
   const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
   const persisted = accessPool ? new accessPool() : null;
@@ -70,7 +70,7 @@ async function startServer() {
       if (req.method === "OPTIONS") { res.status(204).end(); return; }
       next();
     });
-    app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
+    app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
     app.post("/api/access/logout", async (req, res) => { await logoutAccess(pool, req, res); res.json({ success: true }); });
     app.get("/api/access/me", async (req, res) => { const session = await getAccessSession(pool, req); res.json({ authenticated: Boolean(session), expiresAt: session?.expires_at?.toISOString() ?? null }); });
     app.post("/api/admin/bootstrap", async (req, res) => { try { res.status(201).json(await bootstrapAdmin(pool, { bootstrapSecret: String(req.headers["x-admin-bootstrap-secret"] ?? req.body?.bootstrapSecret ?? ""), email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת מנהל נכשלה." }); } });

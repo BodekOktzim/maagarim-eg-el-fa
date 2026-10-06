@@ -37,7 +37,6 @@ export async function verifySecret(value: string, encoded: string) {
 }
 function generateAccessCode() { return Array.from({ length: 3 }, () => randomBytes(3).toString("hex").toUpperCase()).join("-"); }
 function getCookie(req: Request, name: string) { return parseCookie(req.headers.cookie ?? "")[name]; }
-function isProduction() { return process.env.NODE_ENV === "production"; }
 function revealKey() {
   const configured = process.env.ACCESS_REVEAL_KEY?.trim() || process.env.JWT_SECRET?.trim();
   if (!configured) throw new Error("ACCESS_REVEAL_KEY אינו מוגדר בשרת.");
@@ -57,19 +56,6 @@ function decryptSecret(value: string) {
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64url")), decipher.final()]).toString("utf8");
 }
 
-async function verifyTurnstile(token: unknown, ip: string) {
-  const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
-  if (!secret) {
-    if (isProduction()) throw new Error("CAPTCHA is not configured");
-    return true;
-  }
-  if (typeof token !== "string" || token.length < 10) return false;
-  const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ secret, response: token, remoteip: ip }) });
-  if (!response.ok) return false;
-  const payload = await response.json() as { success?: boolean };
-  return payload.success === true;
-}
-
 async function logEvent(pool: Pool, eventType: string, fields: { accessCodeId?: string; accessSessionId?: string; adminId?: string; ip?: string; userAgent?: string; metadata?: unknown }) {
   await pool.query("INSERT INTO login_events(event_type, access_code_id, access_session_id, admin_id, ip, user_agent, metadata) VALUES($1,$2,$3,$4,$5,$6,$7)", [eventType, fields.accessCodeId ?? null, fields.accessSessionId ?? null, fields.adminId ?? null, fields.ip ?? null, fields.userAgent ?? null, fields.metadata ?? {}]);
 }
@@ -79,9 +65,8 @@ export async function migrateAccessControl(pool: Pool) {
   await pool.query(sql);
 }
 
-export async function loginWithAccessCode(pool: Pool, req: Request, res: Response, input: { password: string; captchaToken?: string }) {
+export async function loginWithAccessCode(pool: Pool, req: Request, res: Response, input: { password: string }) {
   const ip = requestIp(req);
-  if (!(await verifyTurnstile(input.captchaToken, ip))) { await logEvent(pool, "login_failed", { ip, userAgent: userAgent(req), metadata: { reason: "captcha" } }); throw new Error("האימות האנושי נכשל."); }
   const candidates = await pool.query<AccessRecord>("SELECT id, code_hash, label, validity_kind, validity_seconds, status FROM access_codes WHERE status = 'active' AND deleted_at IS NULL");
   let matched: AccessRecord | undefined;
   for (const candidate of candidates.rows) if (await verifySecret(input.password, candidate.code_hash)) { matched = candidate; break; }

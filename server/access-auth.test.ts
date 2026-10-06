@@ -6,7 +6,6 @@ import { ACCESS_COOKIE, bootstrapAdmin, deleteAccessCode, getAccessSession, hash
 async function loginFixture(validityKind: "fixed" | "unlimited", validitySeconds: number | null) {
   const now = 1_800_000_000_000;
   vi.stubEnv("NODE_ENV", "test");
-  vi.stubEnv("TURNSTILE_SECRET_KEY", "");
   vi.spyOn(Date, "now").mockReturnValue(now);
   const codeHash = await hashSecret("test-access-code");
   const calls: { sql: string; values?: unknown[] }[] = [];
