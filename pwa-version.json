@@ -1,17 +1,17 @@
 {
-  "buildId": "a2cf5d5ed3040b5a03ea3d5ab08c5968b6ab943c",
-  "version": "a2cf5d5",
-  "builtAt": "2026-10-06T21:20:19.467Z",
-  "appBytes": 1712746,
-  "downloadBytes": 616549,
+  "buildId": "c849ec74b009973d197d9fe705a01b3f6c7346e4",
+  "version": "c849ec7",
+  "builtAt": "2026-10-06T21:54:55.660Z",
+  "appBytes": 1717833,
+  "downloadBytes": 617407,
   "resources": [
     {
-      "url": "/maagarim-eg-el-fa/assets/index-CHSSVjVa.css",
-      "bytes": 148942
+      "url": "/maagarim-eg-el-fa/assets/index-5xQlgw_u.css",
+      "bytes": 149984
     },
     {
-      "url": "/maagarim-eg-el-fa/assets/index-DHVQyVff.js",
-      "bytes": 577883
+      "url": "/maagarim-eg-el-fa/assets/index-BGY8GKtw.js",
+      "bytes": 581928
     },
     {
       "url": "/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js",
