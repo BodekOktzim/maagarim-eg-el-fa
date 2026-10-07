@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS access_codes (
   CHECK (validity_seconds IS NULL OR validity_seconds > 0)
 );
 
+ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT;
+
 CREATE TABLE IF NOT EXISTS access_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   access_code_id UUID NOT NULL REFERENCES access_codes(id),

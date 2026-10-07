@@ -16,10 +16,12 @@ import {
   type TextMatchMode,
 } from "@/lib/full-dataset-search";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api.onrender.com").replace(/\/$/, "");
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
-type WebSearchResult = { title: string; url: string; snippet: string; source: string; query: string; domain: string; sourceKind: string; sourceQuality: number; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; relevanceScore: number; relevanceLabel: string; context: string; platforms: string[]; contextTerms: string[]; additionalPhones: string[]; addresses: string[]; socialProfiles: { platform: string; url: string; username?: string; displayName?: string; confidence?: string; evidenceIds?: string[] }[]; evidence: { id: string; source: string; url: string; title: string; foundText: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; query: string }[]; entityLabels: string[] };
-type WebEntityGroup = { label: string; kind: "business" | "person" | "unknown"; confidence: "strong" | "possible" | "insufficient"; confidenceScore: number; sourceCount: number; evidenceCount: number; fullTextCount: number; sourceDomains: string[]; evidenceTypes: string[]; platforms: string[]; socialProfiles: WebSearchResult["socialProfiles"]; reasons: string[]; explanation: string; contradictions: string[]; evidence: WebSearchResult["evidence"] };
+type WebSearchEvidence = { id: string; source: string; url: string; domain: string; independentSource: string; title: string; foundText: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; fullText: boolean; query: string; keywords: string[]; relatedPhones: string[] };
+type WebSearchResult = { title: string; url: string; snippet: string; source: string; query: string; domain: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; relevanceScore: number; relevanceLabel: string; context: string; platforms: string[]; socialProfiles: { platform: string; url: string; username?: string; displayName?: string }[]; evidence: WebSearchEvidence[]; entityLabels: string[]; relatedPhones: string[]; contextKeywords: string[] };
+type WebEntityGroup = { label: string; kind: "business" | "person" | "unknown"; confidence: "strong" | "possible" | "insufficient"; confidenceScore: number; sourceCount: number; supportingSources: string[]; platforms: string[]; socialProfiles: WebSearchResult["socialProfiles"]; reasons: string[]; evidenceIds: string[]; evidence: WebSearchEvidence[]; contradictions: string[] };
 type PhoneIntelligence = { local: string; international: string; country: string; formats: string[]; likelyLineType: "mobile" | "landline" | "unknown" };
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
@@ -59,6 +61,21 @@ function searchHitDetailGroups(hit: SearchHit): SearchDetailGroup[] {
   ].filter((group) => group.rows.length > 0);
 }
 
+function WebIntelligencePanel({ groups }: { groups: WebEntityGroup[] }) {
+  if (!groups.length) return null;
+  const confidenceLabel = (confidence: WebEntityGroup["confidence"]) => confidence === "strong" ? "Strong · התאמה חזקה" : confidence === "possible" ? "Possible · התאמה אפשרית" : "Insufficient · מידע לא מספיק";
+  const kindLabel = (kind: WebEntityGroup["kind"]) => kind === "business" ? "עסק" : kind === "person" ? "אדם" : "לא מסווג";
+  return <section className="space-y-3 rounded-xl border border-fuchsia-200/15 bg-fuchsia-200/[0.035] p-3" aria-label="ניתוח חכם">
+    <div><h3 className="text-sm font-semibold text-fuchsia-100">🔎 ניתוח חכם</h3><p className="mt-1 text-xs text-white/50">קיבוץ דטרמיניסטי של Evidence ציבורי בלבד; אין כאן מסקנה אוטומטית מעבר למידע שנאסף.</p></div>
+    {groups.slice(0, 8).map((group) => <article key={`smart-${group.label}`} className="rounded-xl border border-white/10 bg-black/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="font-semibold text-white/90">{group.label}</h4><p className="mt-1 text-[11px] text-white/45">{kindLabel(group.kind)} · {group.sourceCount} מקורות עצמאיים · {group.confidenceScore}/100</p></div><span className={`rounded-full px-2 py-1 text-[10px] ${group.confidence === "strong" ? "bg-emerald-200/15 text-emerald-100" : group.confidence === "possible" ? "bg-amber-200/15 text-amber-100" : "bg-white/10 text-white/60"}`}>{confidenceLabel(group.confidence)}</span></div>
+      <div className="mt-2 grid gap-2 text-xs text-white/65 sm:grid-cols-2"><div><p className="text-white/40">למה קובץ</p><ul className="mt-1 list-disc space-y-1 ps-4">{group.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div><div><p className="text-white/40">מקורות ופרופילים</p><p className="mt-1 break-words">{group.supportingSources.join(" · ") || "אין מקור עצמאי מזוהה"}</p>{group.socialProfiles.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{group.socialProfiles.map((profile) => <a key={profile.url} href={profile.url} target="_blank" rel="noopener noreferrer" className="rounded-md border border-cyan-200/15 px-2 py-1 text-cyan-100 hover:bg-cyan-200/10">{profile.platform}{profile.username ? ` · @${profile.username}` : ""}</a>)}</div>}</div></div>
+      {group.contradictions.length > 0 && <div className="mt-2 rounded-lg border border-rose-200/20 bg-rose-300/[0.06] p-2 text-xs text-rose-100"><strong>סתירות:</strong> {group.contradictions.join(" · ")}</div>}
+      <details className="mt-2 text-xs text-white/55"><summary className="cursor-pointer text-fuchsia-100/80">Evidence ({group.evidenceIds.length})</summary><div className="mt-2 space-y-2">{group.evidence.map((evidence) => <div key={evidence.id} className="rounded-lg border border-white/[0.06] bg-white/[0.025] p-2"><p className="break-all text-white/65">{evidence.domain} · {evidence.fullText ? "טקסט מלא" : "Snippet"}</p><p className="mt-1 leading-5">{evidence.foundText}</p><a href={evidence.url} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all text-cyan-200 underline decoration-dotted">{evidence.url}</a></div>)}</div></details>
+    </article>)}
+  </section>;
+}
+
 function TextMatchModeSelector({ mode, onChange }: { mode: TextMatchMode; onChange: (mode: TextMatchMode) => void }) {
   return <section className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="מצב התאמת שם ומיקום">
     <p className="mb-2 text-xs font-semibold text-white/75">התאמת שם ומיקום</p>
@@ -82,6 +99,11 @@ export default function GitHubPagesHome() {
   const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaError, setCaptchaError] = useState("");
+  const captchaContainerRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetIdRef = useRef<string | number | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -128,6 +150,43 @@ export default function GitHubPagesHome() {
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (turnstileSiteKey) return;
+    void fetch(`${API_BASE}/api/public-config`, { credentials: "omit" }).then(async (response) => {
+      if (!response.ok) return;
+      const config = await response.json() as { turnstileSiteKey?: string };
+      if (config.turnstileSiteKey) setTurnstileSiteKey(config.turnstileSiteKey);
+    }).catch(() => setCaptchaError("לא ניתן להתחבר לשירות האימות. נסה לרענן את הדף."));
+  }, [turnstileSiteKey]);
+
+  useEffect(() => {
+    if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
+    let disposed = false;
+    let timer: number | undefined;
+    const render = () => {
+      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string | number } }).turnstile;
+      if (disposed || !turnstile || !captchaContainerRef.current || captchaWidgetIdRef.current !== null) return Boolean(turnstile);
+      captchaWidgetIdRef.current = turnstile.render(captchaContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => { setCaptchaToken(token); setCaptchaError(""); },
+        "expired-callback": () => { setCaptchaToken(""); setCaptchaError("האימות פג. יש לבצע אותו שוב."); },
+        "error-callback": () => { setCaptchaToken(""); setCaptchaError("Turnstile לא נטען. נסה לרענן או לבטל חוסם פרסומות."); },
+      });
+      return true;
+    };
+    const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true; script.defer = true; script.dataset.turnstile = "true";
+      script.onerror = () => setCaptchaError("לא ניתן לטעון את האימות האנושי. בדוק חוסם פרסומות.");
+      document.head.appendChild(script);
+    }
+    timer = window.setInterval(() => { if (render() && timer) window.clearInterval(timer); }, 250);
+    render();
+    return () => { disposed = true; if (timer) window.clearInterval(timer); captchaWidgetIdRef.current = null; };
+  }, [unlocked, turnstileSiteKey]);
 
   useEffect(() => {
     void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
@@ -191,14 +250,16 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
+    if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
-      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password }) });
+      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, captchaToken }) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
+        setCaptchaToken("");
         throw new Error(payload.error || "הכניסה נכשלה.");
       }
       const startedAt = Date.now();
-      setPassword(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
@@ -417,6 +478,12 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+              <p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p>
+              <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />
+              {!turnstileSiteKey && !captchaError && <p className="text-xs text-white/55">טוען את אפשרות האימות…</p>}
+              {captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}
+            </div>
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>
@@ -494,7 +561,7 @@ export default function GitHubPagesHome() {
         </article>)}</div> : !searchError ? <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 text-center text-sm text-white/55">אין התאמות באינדקסים הנוכחיים. ודא שהפרטים הוקלדו נכון ונסה שוב.</div> : null}
       </section>}
 
-      {sourceFilter === "facebook" && facebookMode === "phone" && internetSearchEnabled && searched && !isSearching && <section className="space-y-4 rounded-2xl border border-violet-200/15 bg-violet-200/[0.04] p-4 sm:p-5" aria-label="תוצאות חיפוש באינטרנט"><div><h2 className="text-base font-semibold text-violet-100">תוצאות מהאינטרנט</h2><p className="mt-1 text-xs leading-relaxed text-white/50">תוצאות אלה נוספו לחיפוש Facebook עבור אותו מספר. הן מציינות אזכור ציבורי בלבד ואינן הוכחה לבעלות או לזהות.</p></div>{webPhoneIntelligence && <div className="grid gap-2 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-xs text-white/65 sm:grid-cols-3"><div><span className="text-white/40">מספר מקומי</span><p className="mt-1 font-mono text-white/85">{webPhoneIntelligence.local}</p></div><div><span className="text-white/40">פורמט בינלאומי</span><p className="mt-1 font-mono text-white/85">{webPhoneIntelligence.international}</p></div><div><span className="text-white/40">סוג קו משוער</span><p className="mt-1 text-white/85">{webPhoneIntelligence.likelyLineType === "mobile" ? "נייד" : webPhoneIntelligence.likelyLineType === "landline" ? "נייח" : "לא ידוע"} · {webPhoneIntelligence.country}</p></div></div>}{webSearchAnalysis && <div className="rounded-xl border border-amber-200/15 bg-amber-200/[0.04] p-3 text-sm text-amber-50"><p className="font-semibold">ניתוח קשרים</p><p className="mt-1 text-xs leading-relaxed text-white/65">{webSearchAnalysis}</p></div>}{webSearchGroups.length > 0 && <div className="space-y-2"><p className="text-xs font-semibold text-white/60">ישויות אפשריות וקבוצות מקורות</p>{webSearchGroups.slice(0, 5).map((group) => <div key={group.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-white/90">{group.label}</span><span className={`rounded-full px-2 py-1 text-[10px] ${group.confidence === "strong" ? "bg-emerald-200/15 text-emerald-100" : group.confidence === "possible" ? "bg-amber-200/15 text-amber-100" : "bg-white/10 text-white/60"}`}>{group.confidence === "strong" ? "התאמה חזקה" : group.confidence === "possible" ? "התאמה אפשרית" : "מידע לא מספיק"}</span></div><p className="mt-1 text-xs text-white/55">{group.sourceCount} דומיינים עצמאיים · {group.evidenceCount} ראיות · {group.reasons.join(" · ")}</p><p className="mt-2 text-xs leading-relaxed text-white/70">{group.explanation}</p>{group.contradictions.length > 0 && <p className="mt-2 rounded-lg border border-rose-200/15 bg-rose-200/[0.04] p-2 text-xs text-rose-100">מקורות סותרים: {group.contradictions.join(" · ")}</p>}{group.evidence.length > 0 && <div className="mt-2 space-y-1 text-[11px] text-white/45">{group.evidence.slice(0, 5).map((evidence) => <a key={evidence.id} href={evidence.url} target="_blank" rel="noopener noreferrer" className="block break-all hover:text-cyan-100">[{evidence.id}] {evidence.title} · {evidence.url}</a>)}</div>}</div>)}</div>}{isWebSearching && <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-sm text-white/70"><LoaderCircle size={18} className="animate-spin text-violet-200"/>מחפש עמודים ציבוריים ומוודא שהמספר מופיע בטקסט…</div>}{webSearchError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{webSearchError}</p>}{webSearchResults.length > 0 && <div className="space-y-3"><p className="text-xs leading-relaxed text-white/55">נמצאו {webSearchResults.length} עמודים עם הופעה מפורשת של המספר · {webSearchSourceCount} מקורות{webSearchIncomplete ? " · חלק מהחיפושים לא הושלמו" : ""}{webSearchLimited ? " · מוצגות 100 התוצאות הראשונות" : ""}{webSearchDurationMs !== null ? ` · ${formatSearchDuration(webSearchDurationMs)}` : ""}</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><span className="rounded-full border border-violet-200/15 bg-violet-200/10 px-2 py-1 text-[10px] text-violet-100">הקשר {result.relevanceLabel}</span></div><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p>{result.context && <p className="mt-1 rounded-lg border border-white/[0.06] bg-black/10 p-2 text-[11px] leading-5 text-white/55">הקשר שנמצא: {result.context}</p>}{result.socialProfiles.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{result.socialProfiles.map((profile) => <a key={`${profile.platform}-${profile.url}`} href={profile.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-cyan-200/15 px-2.5 py-1.5 text-[11px] text-cyan-100 hover:bg-cyan-200/10">{profile.platform}{profile.username ? ` · @${profile.username}` : ""}</a>)}</div>}<p className="mt-1 text-[11px] text-emerald-200/75">{result.matchLocation === "page-text" ? "המספר נמצא בטקסט המלא של העמוד" : "המספר נמצא בקטע תוכן שסופק על ידי מנוע החיפוש"} · {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}</div>}{webSearchCompleted && webSearchResults.length === 0 && !webSearchError && <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">לא נמצאו עמודים שבהם המספר מופיע בטקסט שנשלף.{webSearchIncomplete ? " חלק מהחיפושים לא הושלמו, לכן התוצאה חלקית." : ""}</p>}</section>}
+      {sourceFilter === "facebook" && facebookMode === "phone" && internetSearchEnabled && searched && !isSearching && <section className="space-y-4 rounded-2xl border border-violet-200/15 bg-violet-200/[0.04] p-4 sm:p-5" aria-label="תוצאות חיפוש באינטרנט"><div><h2 className="text-base font-semibold text-violet-100">תוצאות מהאינטרנט</h2><p className="mt-1 text-xs leading-relaxed text-white/50">תוצאות אלה נוספו לחיפוש Facebook עבור אותו מספר. הן מציינות אזכור ציבורי בלבד ואינן הוכחה לבעלות או לזהות.</p></div>{webPhoneIntelligence && <div className="grid gap-2 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-xs text-white/65 sm:grid-cols-3"><div><span className="text-white/40">מספר מקומי</span><p className="mt-1 font-mono text-white/85">{webPhoneIntelligence.local}</p></div><div><span className="text-white/40">פורמט בינלאומי</span><p className="mt-1 font-mono text-white/85">{webPhoneIntelligence.international}</p></div><div><span className="text-white/40">סוג קו משוער</span><p className="mt-1 text-white/85">{webPhoneIntelligence.likelyLineType === "mobile" ? "נייד" : webPhoneIntelligence.likelyLineType === "landline" ? "נייח" : "לא ידוע"} · {webPhoneIntelligence.country}</p></div></div>}{webSearchAnalysis && <div className="rounded-xl border border-amber-200/15 bg-amber-200/[0.04] p-3 text-sm text-amber-50"><p className="font-semibold">ניתוח קשרים</p><p className="mt-1 text-xs leading-relaxed text-white/65">{webSearchAnalysis}</p></div>}<WebIntelligencePanel groups={webSearchGroups} />{isWebSearching && <div role="status" aria-live="polite" className="flex items-center gap-3 rounded-xl border border-violet-100/10 bg-white/[0.03] p-3 text-sm text-white/70"><LoaderCircle size={18} className="animate-spin text-violet-200"/>מחפש עמודים ציבוריים ומוודא שהמספר מופיע בטקסט…</div>}{webSearchError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{webSearchError}</p>}{webSearchResults.length > 0 && <div className="space-y-3"><p className="text-xs leading-relaxed text-white/55">נמצאו {webSearchResults.length} עמודים עם הופעה מפורשת של המספר · {webSearchSourceCount} מקורות{webSearchIncomplete ? " · חלק מהחיפושים לא הושלמו" : ""}{webSearchLimited ? " · מוצגות 100 התוצאות הראשונות" : ""}{webSearchDurationMs !== null ? ` · ${formatSearchDuration(webSearchDurationMs)}` : ""}</p>{webSearchResults.map((result) => <article key={result.url} className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><div className="flex flex-wrap items-start justify-between gap-2"><a href={result.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-100 hover:underline">{result.title}</a><span className="rounded-full border border-violet-200/15 bg-violet-200/10 px-2 py-1 text-[10px] text-violet-100">הקשר {result.relevanceLabel}</span></div><p className="mt-1 text-xs leading-5 text-white/65">{result.snippet}</p>{result.context && <p className="mt-1 rounded-lg border border-white/[0.06] bg-black/10 p-2 text-[11px] leading-5 text-white/55">הקשר שנמצא: {result.context}</p>}{result.socialProfiles.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{result.socialProfiles.map((profile) => <a key={`${profile.platform}-${profile.url}`} href={profile.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-cyan-200/15 px-2.5 py-1.5 text-[11px] text-cyan-100 hover:bg-cyan-200/10">{profile.platform}{profile.username ? ` · @${profile.username}` : ""}</a>)}</div>}<p className="mt-1 text-[11px] text-emerald-200/75">{result.matchLocation === "page-text" ? "המספר נמצא בטקסט המלא של העמוד" : "המספר נמצא בקטע תוכן שסופק על ידי מנוע החיפוש"} · {result.matchedPhone}</p><p className="mt-1 break-all text-[11px] text-white/35">{result.source} · {result.url}</p></article>)}</div>}{webSearchCompleted && webSearchResults.length === 0 && !webSearchError && <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-white/55">לא נמצאו עמודים שבהם המספר מופיע בטקסט שנשלף.{webSearchIncomplete ? " חלק מהחיפושים לא הושלמו, לכן התוצאה חלקית." : ""}</p>}</section>}
       {familyError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/10 p-3 text-sm text-rose-100">{familyError}</p>}
       {isLoadingFamily && <section role="status" aria-live="polite" className="flex items-center gap-4 rounded-2xl border border-fuchsia-200/20 bg-[#1a1122] p-5"><LoaderCircle aria-hidden="true" className="shrink-0 animate-spin text-fuchsia-300" size={24}/><div><p className="font-semibold">טוען קשרים משפחתיים…</p><p className="mt-1 text-sm text-white/50">המידע נבנה מהקשרים המתועדים במאגר המקור.</p></div></section>}
       {familyData && familyCentralId && <section id="family-tree" className="scroll-mt-24 space-y-4"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">Family relationship map</p><h2 className="mt-1 text-2xl font-bold text-white">עץ קשרים משפחתיים</h2><p className="mt-1 text-sm text-white/50">מרכז העץ: ת״ז {familyCentralId}{familyDurationMs !== null ? ` · זמן טעינה: ${formatSearchDuration(familyDurationMs)}` : ""}</p></div><div className="flex flex-wrap gap-2 text-xs text-white/45"><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><MapPin size={13}/> יישוב וכתובת לפי זמינות</span><span className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-2"><CalendarDays size={13}/> פרטי מקור</span></div></div><FamilyTree data={familyData} centralId={familyCentralId} onSelect={(id) => void changeFamilyCenter(id)}/></section>}

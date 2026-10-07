@@ -169,3 +169,65 @@ describe("filterExactPhoneResults", () => {
     expect(groups[0].socialProfiles.every((profile) => profile.evidenceIds.length === 1)).toBe(true);
   });
 });
+
+
+describe("deterministic web entity resolution", () => {
+  const base = { source: "Tavily", query, matchedPhone: "050-1234567", relevanceScore: 80, relevanceLabel: "גבוהה" as const, matchLocation: "page-text" as const };
+
+  it("scores a clear business using booking/contact context", () => {
+    const { groups, analysis } = enrichWebPhoneResults([
+      { ...base, title: "דוגמה שירותים", url: "https://example.co.il/contact", context: "עסק: דוגמה שירותים. להזמנות ב-WhatsApp: 050-1234567" },
+      { ...base, title: "דוגמה שירותים", url: "https://orders.example.co.il", context: "דוגמה שירותים · להזמנות וטלפון 050-1234567" },
+      { ...base, title: "דוגמה שירותים", url: "https://www.facebook.com/example", context: "דוגמה שירותים · צור קשר 050-1234567" },
+    ]);
+    expect(groups[0]).toMatchObject({ label: "דוגמה שירותים", kind: "business", confidence: "strong" });
+    expect(groups[0].confidenceScore).toBeGreaterThanOrEqual(70);
+    expect(groups[0].reasons.join(" ")).toContain("להזמנות");
+    expect(analysis).toContain("דוגמה שירותים");
+  });
+
+  it("counts copied pages on one domain once as an independent source", () => {
+    const { groups } = enrichWebPhoneResults([
+      { ...base, title: "Same Business", url: "https://example.com/a", context: "Business contact 050-1234567" },
+      { ...base, title: "Same Business", url: "https://example.com/b", context: "Business contact 050-1234567" },
+      { ...base, title: "Same Business", url: "https://other.example.net/contact", context: "Business contact 050-1234567" },
+    ]);
+    expect(groups[0].sourceCount).toBe(2);
+    expect(groups[0].supportingSources).toEqual(expect.arrayContaining(["example.com", "other.example.net"]));
+  });
+
+  it("collects social profiles and related phone evidence without inventing links", () => {
+    const { results, groups } = enrichWebPhoneResults([
+      { ...base, title: "Example Store", url: "https://www.instagram.com/example_store", context: "Contact: 050-1234567. Alternate phone: 052-7654321" },
+      { ...base, title: "Example Store", url: "https://www.linkedin.com/company/example-store", context: "Company phone 050-1234567" },
+    ]);
+    expect(results.flatMap((result) => result.socialProfiles).map((profile) => profile.platform)).toEqual(expect.arrayContaining(["instagram", "linkedin"]));
+    expect(results[0].relatedPhones).toContain("0527654321");
+    expect(groups[0].evidenceIds.length).toBe(2);
+  });
+
+  it("reports contradictions instead of choosing between different labels", () => {
+    const { groups } = enrichWebPhoneResults([
+      { ...base, title: "Alpha Studio", url: "https://alpha.example", context: "Business contact 050-1234567" },
+      { ...base, title: "Beta Clinic", url: "https://beta.example", context: "Business contact 050-1234567" },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].contradictions).toContain(groups[1].label);
+    expect(groups[0].reasons.join(" ")).toContain("סותרות");
+  });
+
+  it("keeps insufficient evidence conservative for one English snippet", () => {
+    const { groups, analysis } = enrichWebPhoneResults([
+      { ...base, title: "Possible Contact", url: "https://example.org/search", matchLocation: "provider-snippet", context: "Contact phone 050-1234567" },
+    ]);
+    expect(groups[0].confidence).toBe("insufficient");
+    expect(groups[0].reasons.join(" ")).toContain("קטעי");
+    expect(analysis).toContain("לא ניתן");
+  });
+
+  it("returns no entities when there are no phone-matching results", () => {
+    const intelligence = enrichWebPhoneResults([]);
+    expect(intelligence.groups).toEqual([]);
+    expect(intelligence.analysis).toContain("לא ניתן");
+  });
+});
