@@ -17,9 +17,9 @@ type AdminRecord = { id: string; email: string; password_hash: string; status: s
 function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 function requestIp(req: Request) { return String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim().slice(0, 200); }
 function userAgent(req: Request) { return String(req.headers["user-agent"] ?? "").slice(0, 1000); }
-function cookieOptions(maxAgeSeconds: number) { return { httpOnly: true, secure: true, sameSite: "none" as const, path: "/", maxAge: maxAgeSeconds * 1000 }; }
+function cookieOptions(maxAgeSeconds?: number) { return { httpOnly: true, secure: true, sameSite: "none" as const, path: "/", ...(maxAgeSeconds == null ? {} : { maxAge: maxAgeSeconds * 1000 }) }; }
 function clearCookie(res: Response, name: string) { res.clearCookie(name, cookieOptions(0)); }
-function setCookie(res: Response, name: string, value: string, maxAge: number) { res.cookie(name, value, cookieOptions(maxAge)); }
+function setCookie(res: Response, name: string, value: string, maxAge?: number) { res.cookie(name, value, cookieOptions(maxAge)); }
 
 export async function hashSecret(value: string) {
   const salt = randomBytes(16);
@@ -86,15 +86,15 @@ export async function loginWithAccessCode(pool: Pool, req: Request, res: Respons
   let matched: AccessRecord | undefined;
   for (const candidate of candidates.rows) if (await verifySecret(input.password, candidate.code_hash)) { matched = candidate; break; }
   if (!matched) { await logEvent(pool, "login_failed", { ip, userAgent: userAgent(req), metadata: { reason: "invalid" } }); throw new Error("סיסמת הגישה שגויה."); }
-  const validity = matched.validity_kind === "fixed" && matched.validity_seconds ? Number(matched.validity_seconds) : SESSION_TTL_SECONDS;
-  const sessionLifetimeSeconds = Math.min(SESSION_TTL_SECONDS, validity);
-  const expiresAt = new Date(Date.now() + sessionLifetimeSeconds * 1000);
+  const validity = matched.validity_kind === "fixed" && matched.validity_seconds ? Number(matched.validity_seconds) : null;
+  const sessionLifetimeSeconds = validity == null ? undefined : Math.min(SESSION_TTL_SECONDS, validity);
+  const expiresAt = sessionLifetimeSeconds == null ? null : new Date(Date.now() + sessionLifetimeSeconds * 1000);
   const token = randomBytes(32).toString("base64url");
   const session = await pool.query<{ id: string }>("INSERT INTO access_sessions(access_code_id, token_hash, expires_at, ip, user_agent) VALUES($1,$2,$3,$4,$5) RETURNING id", [matched.id, hashToken(token), expiresAt, ip, userAgent(req)]);
   await pool.query("UPDATE access_codes SET use_count = use_count + 1, login_count = login_count + 1, first_used_at = COALESCE(first_used_at, now()), last_used_at = now(), updated_at = now() WHERE id = $1", [matched.id]);
   await logEvent(pool, "login_success", { accessCodeId: matched.id, accessSessionId: session.rows[0].id, ip, userAgent: userAgent(req) });
   setCookie(res, ACCESS_COOKIE, token, sessionLifetimeSeconds);
-  return { expiresAt: expiresAt.toISOString(), label: matched.label };
+  return { expiresAt: expiresAt?.toISOString() ?? null, label: matched.label };
 }
 
 export async function getAccessSession(pool: Pool, req: Request): Promise<SessionRecord | null> {

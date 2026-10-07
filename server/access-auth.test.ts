@@ -42,11 +42,11 @@ describe("access authentication primitives", () => {
     expect(first).not.toBe(second);
   });
 
-  it("expires an unlimited access session after exactly 30 minutes and sets the cookie in milliseconds", async () => {
+  it("keeps an unlimited access session without an automatic expiration", async () => {
     const { result, cookie, dbExpiry, now } = await loginFixture("unlimited", null);
-    expect(Date.parse(result.expiresAt!)).toBe(now + 30 * 60 * 1000);
-    expect(dbExpiry.getTime()).toBe(now + 30 * 60 * 1000);
-    expect(cookie.maxAge).toBe(30 * 60 * 1000);
+    expect(result.expiresAt).toBeNull();
+    expect(dbExpiry).toBeNull();
+    expect(cookie.maxAge).toBeUndefined();
     expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: "none", path: "/" });
   });
 
