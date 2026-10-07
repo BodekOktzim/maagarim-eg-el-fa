@@ -120,4 +120,52 @@ describe("filterExactPhoneResults", () => {
     expect(groups[0]).toMatchObject({ label: "דוגמה שירותים", confidence: "possible", sourceCount: 2 });
     expect(groups[0].evidence).toHaveLength(2);
   });
+
+  it("extracts Hebrew booking context, an address, and an additional phone", () => {
+    const { results, groups } = enrichWebPhoneResults([{ source: "Tavily", query, title: "דני ספרים", url: "https://dani-books.co.il/contact", snippet: "להזמנות אצל דני ספרים: 050-1234567", context: "להזמנות אצל דני ספרים: 050-1234567, טלפון נוסף 03-7654321, כתובת רחוב הרצל 5", matchedPhone: "050-1234567", matchLocation: "page-text", relevanceScore: 90, relevanceLabel: "גבוהה" }]);
+    expect(results[0].contextTerms).toContain("להזמנות");
+    expect(results[0].additionalPhones).toContain("03-7654321");
+    expect(results[0].addresses[0]).toContain("רחוב הרצל 5");
+    expect(groups[0].label).toContain("דני ספרים");
+  });
+
+  it("extracts an English contact name near the phone", () => {
+    const { groups } = enrichWebPhoneResults([{ source: "Tavily", query, title: "Contact John", url: "https://john.example.com/contact", snippet: "Contact John - 050-1234567", context: "Contact John - 050-1234567", matchedPhone: "050-1234567", matchLocation: "page-text", relevanceScore: 80, relevanceLabel: "גבוהה" }]);
+    expect(groups.map((group) => group.label)).toContain("John");
+  });
+
+  it("counts repeated pages on one domain as duplicate evidence, not independent sources", () => {
+    const base = { source: "Tavily", query, title: "עסק X", snippet: "עסק: עסק X · 050-1234567", matchedPhone: "050-1234567", matchLocation: "page-text" as const, relevanceScore: 80, relevanceLabel: "גבוהה" as const };
+    const { groups } = enrichWebPhoneResults([
+      { ...base, url: "https://business.example.com/contact" },
+      { ...base, url: "https://business.example.com/orders" },
+    ]);
+    expect(groups[0]).toMatchObject({ sourceCount: 1, evidenceCount: 2 });
+  });
+
+  it("reports contradictions instead of choosing between different entity labels", () => {
+    const base = { source: "Tavily", query, snippet: "050-1234567", matchedPhone: "050-1234567", matchLocation: "page-text" as const, relevanceScore: 80, relevanceLabel: "גבוהה" as const };
+    const { groups } = enrichWebPhoneResults([
+      { ...base, title: "עסק א", url: "https://a.example.com/contact", context: "עסק: עסק א · 050-1234567" },
+      { ...base, title: "עסק ב", url: "https://b.example.com/contact", context: "עסק: עסק ב · 050-1234567" },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.every((group) => group.contradictions.length > 0)).toBe(true);
+  });
+
+  it("marks snippet-only evidence as insufficient and handles no results", () => {
+    const snippet = enrichWebPhoneResults([{ source: "Tavily", query, title: "עסק X", url: "https://example.com", snippet: "עסק X · 050-1234567", matchedPhone: "050-1234567", matchLocation: "provider-snippet", relevanceScore: 40, relevanceLabel: "נמוכה" }]);
+    expect(snippet.groups[0].confidence).toBe("insufficient");
+    expect(enrichWebPhoneResults([])).toMatchObject({ results: [], groups: [], analysis: "לא ניתן לקבוע קשר אמין לישות מסוימת על סמך המקורות שנאספו." });
+  });
+
+  it("keeps multiple public social profiles as separate evidence-backed profiles", () => {
+    const base = { source: "Tavily", query, title: "עסק X", snippet: "עסק X · 050-1234567", matchedPhone: "050-1234567", matchLocation: "page-text" as const, relevanceScore: 80, relevanceLabel: "גבוהה" as const };
+    const { groups } = enrichWebPhoneResults([
+      { ...base, url: "https://facebook.com/business-x" },
+      { ...base, url: "https://instagram.com/business-x" },
+    ]);
+    expect(groups[0].socialProfiles.map((profile) => profile.platform)).toEqual(expect.arrayContaining(["facebook", "instagram"]));
+    expect(groups[0].socialProfiles.every((profile) => profile.evidenceIds.length === 1)).toBe(true);
+  });
 });
