@@ -46,7 +46,7 @@ export async function loginUser(pool: Pool, req: Request, res: Response, input: 
 export async function logoutUser(pool: Pool, req: Request, res: Response) { const token = cookie(req); if (token) await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [hashToken(token)]); clearCookie(res); }
 
 async function activeGrant(pool: Pool, userId: string) {
-  const result = await pool.query("SELECT c.id, c.label, c.status, c.expires_at, c.validity_kind, c.validity_seconds, c.max_users, c.max_searches, c.search_count FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [userId]);
+  const result = await pool.query("SELECT c.id, c.label, c.status, c.expires_at, c.validity_kind, c.validity_seconds, c.max_users, c.max_searches, u.search_count FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id JOIN user_accounts u ON u.id = g.user_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [userId]);
   const code = result.rows[0]; if (!code) return null; return { ...code, active: code.max_searches == null || Number(code.search_count) < Number(code.max_searches) };
 }
 export async function getAccount(pool: Pool, req: Request) { const user = await sessionUser(pool, req); if (!user) return { authenticated: false, user: null, access: null }; return { authenticated: true, user: { id: user.id, username: user.username, status: user.status, createdAt: user.created_at, lastLoginAt: user.last_login_at }, session: { expiresAt: user.session_expires_at, rememberMe: user.remember_me }, access: await activeGrant(pool, user.id) }; }
@@ -75,9 +75,9 @@ export async function authorizeUser(pool: Pool, req: Request, options: { consume
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const rows = (await client.query("SELECT c.id, c.max_searches, c.search_count FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC FOR UPDATE", [user.id])).rows;
+    const rows = (await client.query("SELECT c.id, c.max_searches, u.search_count FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id JOIN user_accounts u ON u.id = g.user_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC FOR UPDATE OF u", [user.id])).rows;
     const code = rows.find((row) => row.max_searches == null || Number(row.search_count) < Number(row.max_searches)); if (!code) throw new Error("אין הרשאת חיפוש פעילה או שמכסת החיפושים הסתיימה.");
-    if (options.consumeQuota && code.max_searches != null) await client.query("UPDATE access_codes SET search_count = search_count + 1, updated_at = now() WHERE id = $1 AND search_count < max_searches", [code.id]);
+    if (options.consumeQuota && code.max_searches != null) await client.query("UPDATE user_accounts SET search_count = search_count + 1, updated_at = now() WHERE id = $1 AND search_count < $2", [user.id, code.max_searches]);
     await client.query("COMMIT"); return { user, code };
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
 }

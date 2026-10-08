@@ -108,7 +108,7 @@ export async function activateAccessCode(pool: Pool, req: Request, res: Response
 export async function getUserAccess(pool: Pool, req: Request) {
   const session = await getUserSession(pool, req);
   if (!session) return { session: null, access: null };
-  const access = await pool.query("SELECT c.id, c.label, g.expires_at, c.max_searches, c.search_count, c.validity_seconds FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [session.user_id]);
+  const access = await pool.query("SELECT c.id, c.label, g.expires_at, c.max_searches, u.search_count, c.validity_seconds FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id JOIN user_accounts u ON u.id = g.user_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [session.user_id]);
   return { session, access: access.rows[0] ?? null };
 }
 
@@ -119,10 +119,10 @@ export async function consumeSearch(pool: Pool, req: Request) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const rows = (await client.query("SELECT c.id, c.max_searches, c.search_count, g.expires_at FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC FOR UPDATE", [session.user_id])).rows;
+    const rows = (await client.query("SELECT c.id, c.max_searches, u.search_count, g.expires_at FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id JOIN user_accounts u ON u.id = g.user_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC FOR UPDATE OF u", [session.user_id])).rows;
     const code = rows.find((row) => row.max_searches == null || Number(row.search_count) < Number(row.max_searches));
     if (!code) throw new Error("מכסת החיפושים הסתיימה.");
-    if (code.max_searches != null) await client.query("UPDATE access_codes SET search_count = search_count + 1, updated_at = now() WHERE id = $1 AND search_count < max_searches", [code.id]);
+    if (code.max_searches != null) await client.query("UPDATE user_accounts SET search_count = search_count + 1, updated_at = now() WHERE id = $1 AND search_count < $2", [session.user_id, code.max_searches]);
     await client.query("COMMIT");
     return { remaining: code.max_searches == null ? null : Math.max(0, Number(code.max_searches) - Number(code.search_count) - 1), maxSearches: code.max_searches == null ? null : Number(code.max_searches), expiresAt: code.expires_at ? new Date(code.expires_at).toISOString() : null };
   } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
