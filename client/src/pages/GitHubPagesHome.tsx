@@ -17,7 +17,8 @@ import {
 } from "@/lib/full-dataset-search";
 import { normalizeWebPhonePayload, type PhoneIntelligence, type WebEntityGroup, type WebSearchResult } from "@/lib/web-phone-contract";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api.onrender.com").replace(/\/$/, "");
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
@@ -95,6 +96,11 @@ export default function GitHubPagesHome() {
   const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaError, setCaptchaError] = useState("");
+  const captchaContainerRef = useRef<HTMLDivElement>(null);
+  const captchaWidgetIdRef = useRef<string | number | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -141,6 +147,45 @@ export default function GitHubPagesHome() {
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (turnstileSiteKey) return;
+    void fetch(`${API_BASE}/api/public-config`, { credentials: "omit" }).then(async (response) => {
+      if (!response.ok) return;
+      const config = await response.json() as { turnstileSiteKey?: string };
+      if (config.turnstileSiteKey) setTurnstileSiteKey(config.turnstileSiteKey);
+    }).catch(() => setCaptchaError("לא ניתן להתחבר לשירות האימות. נסה לרענן את הדף."));
+  }, [turnstileSiteKey]);
+
+  useEffect(() => {
+    if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
+    let disposed = false;
+    let timer: number | undefined;
+    const render = () => {
+      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string | number } }).turnstile;
+      if (disposed || !turnstile || !captchaContainerRef.current || captchaWidgetIdRef.current !== null) return Boolean(turnstile);
+      captchaWidgetIdRef.current = turnstile.render(captchaContainerRef.current, {
+        sitekey: turnstileSiteKey,
+        callback: (token: string) => { setCaptchaToken(token); setCaptchaError(""); },
+        "expired-callback": () => { setCaptchaToken(""); setCaptchaError("האימות פג. יש לבצע אותו שוב."); },
+        "error-callback": () => { setCaptchaToken(""); setCaptchaError("Turnstile לא נטען. נסה לרענן או לבטל חוסם פרסומות."); },
+      });
+      return true;
+    };
+    const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstile = "true";
+      script.onerror = () => setCaptchaError("לא ניתן לטעון את האימות האנושי. בדוק חוסם פרסומות.");
+      document.head.appendChild(script);
+    }
+    timer = window.setInterval(() => { if (render() && timer) window.clearInterval(timer); }, 250);
+    render();
+    return () => { disposed = true; if (timer) window.clearInterval(timer); captchaWidgetIdRef.current = null; };
+  }, [unlocked, turnstileSiteKey]);
 
   useEffect(() => {
     void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
@@ -204,14 +249,16 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
-    try {
-      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password }) });
+    if (turnstileSiteKey && !captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
+      try {
+      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, ...(captchaToken ? { captchaToken } : {}) }) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
+        setCaptchaToken("");
         throw new Error(payload.error || "הכניסה נכשלה.");
       }
       const startedAt = Date.now();
-      setPassword(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
@@ -431,9 +478,11 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            {turnstileSiteKey && <div className="rounded-xl border border-white/10 bg-black/15 p-3"><p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p><div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />{!captchaError && !captchaToken && <p className="text-xs text-white/55">טוען את אפשרות האימות…</p>}{captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}</div>}
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>
+          <a href={`${import.meta.env.BASE_URL}admin`} className="block text-center text-sm text-fuchsia-100/75 underline decoration-dotted underline-offset-4 hover:text-fuchsia-100">כניסה לפאנל המנהל</a>
         </div>
       </main>
     </div>;
@@ -443,7 +492,7 @@ export default function GitHubPagesHome() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
+        <div className="flex items-center gap-2"><PwaControls/><a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
       </div>
     </header>
 
