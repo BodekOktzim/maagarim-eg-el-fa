@@ -96,6 +96,7 @@ export default function GitHubPagesHome() {
   const unlocked = sessionStartedAt !== null;
   const [accountAuthenticated, setAccountAuthenticated] = useState(false);
   const [accountMode, setAccountMode] = useState<"login" | "register">("login");
+  const [accountUser, setAccountUser] = useState<{ username: string; isAdmin?: boolean }>({ username: "" });
   const [accountUsername, setAccountUsername] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [accessCode, setAccessCode] = useState("");
@@ -196,10 +197,11 @@ export default function GitHubPagesHome() {
   useEffect(() => {
     void fetch(`${API_BASE}/api/account/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
-      const payload = await response.json() as { authenticated?: boolean; session?: { expiresAt?: string | null }; access?: { active?: boolean } | null };
+      const payload = await response.json() as { authenticated?: boolean; user?: { username: string; isAdmin?: boolean }; session?: { expiresAt?: string | null }; access?: { active?: boolean; expiresAt?: string | null } | null };
       if (payload.authenticated) {
+        if (payload.user) setAccountUser(payload.user);
         setAccountAuthenticated(true);
-        if (!payload.access?.active) return;
+        if (!payload.access) return;
         setSessionStartedAt(Date.now());
         setSessionExpiresAt(payload.session?.expiresAt ? Date.parse(payload.session.expiresAt) : null);
       }
@@ -253,14 +255,14 @@ export default function GitHubPagesHome() {
       setExportingFamilyId(null);
     }
   };
-  const submitAccount = async (event: FormEvent<HTMLFormElement>) => {
+  const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordError(""); setAccountError("");
     if (!accountUsername.trim() || !password) { setPasswordError("יש להזין שם משתמש וסיסמה."); return; }
     if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
       const endpoint = accountMode === "register" ? "/api/account/register" : "/api/account/login";
-      const body = accountMode === "register" ? { username: accountUsername, password, turnstileToken: captchaToken } : { username: accountUsername, password, rememberMe, turnstileToken: captchaToken };
+      const body = accountMode === "register" ? { username: accountUsername, password, captchaToken } : { username: accountUsername, password, rememberMe, captchaToken };
       const response = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
@@ -269,11 +271,11 @@ export default function GitHubPagesHome() {
       }
       setPassword(""); setCaptchaToken("");
       if (accountMode === "register") { setAccountMode("login"); setPasswordError("ההרשמה הצליחה. התחבר כדי להמשיך."); return; }
-      setAccountAuthenticated(true); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      setAccountAuthenticated(true); setAccountUser({ username: accountUsername, isAdmin: Boolean((payload as { isAdmin?: boolean }).isAdmin) }); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
-  const activateCode = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setAccountError(""); try { const response = await fetch(`${API_BASE}/api/account/activate-code`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: accessCode }) }); const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error || "הפעלת הקוד נכשלה."); setAccessCode(""); setSessionStartedAt(Date.now()); } catch (error) { setAccountError(error instanceof Error ? error.message : "הפעלת הקוד נכשלה."); } };
+  const activateCode = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setAccountError(""); try { const response = await fetch(`${API_BASE}/api/account/access-code`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: accessCode }) }); const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error || "הפעלת הקוד נכשלה."); setAccessCode(""); setSessionStartedAt(Date.now()); } catch (error) { setAccountError(error instanceof Error ? error.message : "הפעלת הקוד נכשלה."); } };
 
   const lock = () => {
     void fetch(`${API_BASE}/api/account/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);

@@ -97,10 +97,10 @@ export async function activateAccessCode(pool: Pool, req: Request, res: Response
   for (const candidate of candidates.rows) if (await verifySecret(input.code.trim(), candidate.code_hash)) { matched = candidate; break; }
   if (!matched) throw new Error("קוד הגישה שגוי.");
   if (matched.expires_at && matched.expires_at.getTime() <= Date.now()) throw new Error("קוד הגישה פג תוקף.");
-  const existing = await pool.query<{ user_id: string }>("SELECT user_id FROM access_code_users WHERE access_code_id = $1 AND (expires_at IS NULL OR expires_at > now())", [matched.id]);
+  const existing = await pool.query<{ user_id: string }>("SELECT user_id FROM access_code_user_grants WHERE access_code_id = $1 AND (expires_at IS NULL OR expires_at > now())", [matched.id]);
   if (!existing.rows.some((row) => row.user_id === session.user_id) && matched.max_users != null && existing.rows.length >= matched.max_users) throw new Error("הקוד כבר בשימוש על ידי מספר המשתמשים המרבי.");
   const expiresAt = matched.expires_at ?? (matched.validity_kind === "fixed" && matched.validity_seconds ? new Date(Date.now() + Number(matched.validity_seconds) * 1000) : null);
-  await pool.query("INSERT INTO access_code_users(access_code_id, user_id, expires_at) VALUES($1,$2,$3) ON CONFLICT (access_code_id, user_id) DO UPDATE SET expires_at = EXCLUDED.expires_at", [matched.id, session.user_id, expiresAt]);
+  await pool.query("INSERT INTO access_code_user_grants(access_code_id, user_id, expires_at) VALUES($1,$2,$3) ON CONFLICT (access_code_id, user_id) DO UPDATE SET expires_at = EXCLUDED.expires_at", [matched.id, session.user_id, expiresAt]);
   await logUserEvent(pool, "access_code_activated", session.user_id, { accessCodeId: matched.id });
   return { active: true, expiresAt: expiresAt?.toISOString() ?? null };
 }
@@ -108,13 +108,13 @@ export async function activateAccessCode(pool: Pool, req: Request, res: Response
 export async function getUserAccess(pool: Pool, req: Request) {
   const session = await getUserSession(pool, req);
   if (!session) return { session: null, access: null };
-  const access = await pool.query("SELECT c.id, c.label, u.expires_at FROM access_code_users u JOIN access_codes c ON c.id = u.access_code_id WHERE u.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (u.expires_at IS NULL OR u.expires_at > now()) ORDER BY u.linked_at DESC LIMIT 1", [session.user_id]);
+  const access = await pool.query("SELECT c.id, c.label, g.expires_at FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [session.user_id]);
   return { session, access: access.rows[0] ?? null };
 }
 
 export async function requireUserAccess(pool: Pool, req: Request) { const state = await getUserAccess(pool, req); if (!state.session) throw new Error("נדרשת התחברות לחשבון."); if (!state.access) throw new Error("נדרשת הרשאת גישה."); return state; }
 
-export async function listUsers(pool: Pool) { return (await pool.query("SELECT u.id, u.username, u.status, u.created_at, u.last_login_at, count(DISTINCT s.id) FILTER (WHERE s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now()))::int AS active_sessions, count(DISTINCT a.access_code_id)::int AS access_codes FROM user_accounts u LEFT JOIN user_sessions s ON s.user_id = u.id LEFT JOIN access_code_users a ON a.user_id = u.id AND (a.expires_at IS NULL OR a.expires_at > now()) WHERE u.status <> 'deleted' GROUP BY u.id ORDER BY u.created_at DESC")).rows; }
+export async function listUsers(pool: Pool) { return (await pool.query("SELECT u.id, u.username, u.status, u.created_at, u.last_login_at, u.search_count, count(DISTINCT s.id) FILTER (WHERE s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now()))::int AS active_sessions, count(DISTINCT g.access_code_id)::int AS access_codes FROM user_accounts u LEFT JOIN user_sessions s ON s.user_id = u.id LEFT JOIN access_code_user_grants g ON g.user_id = u.id AND (g.expires_at IS NULL OR g.expires_at > now()) WHERE u.status <> 'deleted' GROUP BY u.id ORDER BY u.created_at DESC")).rows; }
 export async function setUserStatus(pool: Pool, id: string, status: "active" | "blocked" | "deleted") { await pool.query("UPDATE user_accounts SET status = $1, updated_at = now() WHERE id = $2", [status, id]); if (status !== "active") await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [id]); }
 export async function revokeUserSessions(pool: Pool, id: string) { await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [id]); }
 export async function resetUserPassword(pool: Pool, id: string, password: string) { if (password.length < 8) throw new Error("הסיסמה חייבת להכיל לפחות 8 תווים."); await pool.query("UPDATE user_accounts SET password_hash = $1, password_ciphertext = $2, updated_at = now() WHERE id = $3", [await hashSecret(password), encryptSecret(password), id]); await revokeUserSessions(pool, id); }

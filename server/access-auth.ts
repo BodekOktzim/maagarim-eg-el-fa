@@ -17,7 +17,7 @@ type AdminRecord = { id: string; email: string; password_hash: string; status: s
 export function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 export function requestIp(req: Request) { return String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim().slice(0, 200); }
 export function userAgent(req: Request) { return String(req.headers["user-agent"] ?? "").slice(0, 1000); }
-function cookieOptions(maxAgeSeconds: number) { return { httpOnly: true, secure: true, sameSite: "none" as const, path: "/", maxAge: maxAgeSeconds * 1000 }; }
+function cookieOptions(maxAgeSeconds?: number) { return { httpOnly: true, secure: true, sameSite: "none" as const, path: "/", ...(maxAgeSeconds == null ? {} : { maxAge: maxAgeSeconds * 1000 }) }; }
 function clearCookie(res: Response, name: string) { res.clearCookie(name, cookieOptions(0)); }
 function setCookie(res: Response, name: string, value: string, maxAge?: number) { res.cookie(name, value, cookieOptions(maxAge)); }
 
