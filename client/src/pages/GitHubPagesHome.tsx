@@ -475,6 +475,7 @@ export default function GitHubPagesHome() {
           <div className="rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-fuchsia-300/15 text-fuchsia-200"><LockKeyhole size={26}/></div>
           <h1 className="mt-5 text-center"><span className="bg-gradient-to-r from-fuchsia-200 via-white to-violet-200 bg-clip-text font-serif text-3xl font-bold tracking-[0.12em] text-transparent sm:text-4xl">OSINT Search</span></h1>
+          <div className="mt-5 rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3 text-right text-xs leading-5 text-amber-100" role="note"><Info size={15} className="ml-1 inline align-text-bottom"/> אזהרה: מקור הנתונים ציבורי. ההתחברות מגינה על ממשק האתר בלבד; קובצי GitHub/LFS עשויים להיות ניתנים להורדה ישירה.</div>
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
@@ -503,6 +504,7 @@ export default function GitHubPagesHome() {
     <main className="mx-auto max-w-[1500px] space-y-6 px-4 py-6 sm:px-7 sm:py-9">
       <section className="search-hero overflow-hidden rounded-[28px] border border-fuchsia-200/10 bg-[#20102b] px-5 py-6 shadow-[0_24px_80px_rgba(46,24,61,0.3)] sm:px-9 sm:py-9">
         <div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">חיפוש בשלושת מקורות הנתונים</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">חיפוש אדם</h1></div><div className="hidden rounded-2xl border border-fuchsia-100/10 bg-black/10 px-4 py-3 text-xs text-white/45 sm:block"><UsersRound size={15} className="ml-2 inline text-fuchsia-200"/>19.6 מיליון רשומות במקורות</div></div>
+        <div className="mt-4 rounded-xl border border-amber-200/15 bg-amber-200/[0.05] p-3 text-xs leading-5 text-amber-100/90" role="note"><Info size={14} className="ml-1 inline align-text-bottom"/> מקור הנתונים הציבורי אינו גבול אבטחה מלא: ניתן לעקוף את האתר ולבקש קובצי GitHub/LFS ישירות.</div>
 
         <div className="mt-5 space-y-4" aria-label="חיפוש לפי מקור">
           <div className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="בחירת מקור החיפוש">
