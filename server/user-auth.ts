@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomBytes, createHash } from "node:crypto";
 import { parse as parseCookie } from "cookie";
-import { encryptSecret, decryptSecret, hashSecret, verifySecret, verifyTurnstile } from "./access-auth";
+import { encryptSecret, decryptSecret, ensureLinkedAdmin, hashSecret, isLinkedAdmin, loginLinkedAdmin, verifySecret, verifyTurnstile } from "./access-auth";
 
 export const USER_COOKIE = "__Host-maagarim_user";
 const SHORT_SESSION_SECONDS = 60 * 60 * 24;
@@ -61,7 +61,10 @@ export async function loginUser(pool: Pool, req: Request, res: Response, input: 
   await pool.query("UPDATE user_accounts SET last_login_at = now(), updated_at = now() WHERE id = $1", [user.id]);
   await logUserEvent(pool, "user_login", user.id, { rememberMe });
   setUserCookie(res, token, rememberMe ? REMEMBER_SESSION_SECONDS : SHORT_SESSION_SECONDS);
-  return { id: user.id, username: user.username, expiresAt: expiresAt.toISOString(), rememberMe };
+  await ensureLinkedAdmin(pool);
+  const isAdmin = await isLinkedAdmin(pool, user.id);
+  if (isAdmin) await loginLinkedAdmin(pool, req, res, user.id);
+  return { id: user.id, username: user.username, expiresAt: expiresAt.toISOString(), rememberMe, isAdmin };
 }
 
 export async function getUserSession(pool: Pool, req: Request) {
@@ -80,7 +83,10 @@ export async function getUserSession(pool: Pool, req: Request) {
 export async function logoutUser(pool: Pool, req: Request, res: Response) {
   const token = userToken(req);
   if (token) await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [hashToken(token)]);
+  const adminToken = parseCookie(req.headers.cookie ?? "")["__Host-maagarim_admin"];
+  if (adminToken) await pool.query("UPDATE admin_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [hashToken(adminToken)]);
   clearUserCookie(res);
+  res.clearCookie("__Host-maagarim_admin", cookieOptions(0));
 }
 
 export async function activateAccessCode(pool: Pool, req: Request, res: Response, input: { code: string }) {

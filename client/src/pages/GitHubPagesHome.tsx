@@ -94,7 +94,7 @@ export default function GitHubPagesHome() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const [accountMode, setAccountMode] = useState<"login" | "register">("login");
-  const [accountUser, setAccountUser] = useState<{ id: string; username: string } | null>(null);
+  const [accountUser, setAccountUser] = useState<{ id: string; username: string; isAdmin?: boolean } | null>(null);
   const [accountUsername, setAccountUsername] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState("");
@@ -197,7 +197,7 @@ export default function GitHubPagesHome() {
   useEffect(() => {
     void fetch(`${API_BASE}/api/account/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
-      const payload = await response.json() as { authenticated?: boolean; user?: { id: string; username: string } | null; access?: { expiresAt?: string | null } | null };
+      const payload = await response.json() as { authenticated?: boolean; user?: { id: string; username: string; isAdmin?: boolean } | null; access?: { expiresAt?: string | null } | null };
       if (payload.authenticated && payload.user) {
         setAccountUser(payload.user);
         setSessionStartedAt(payload.access ? Date.now() : null);
@@ -263,11 +263,11 @@ export default function GitHubPagesHome() {
       const path = accountMode === "register" ? "/api/account/register" : "/api/account/login";
       const body = accountMode === "register" ? { username: accountUsername, password: accountPassword, captchaToken } : { username: accountUsername, password: accountPassword, rememberMe, captchaToken };
       const response = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
-      const payload = await response.json() as { id?: string; username?: string; expiresAt?: string; error?: string };
+      const payload = await response.json() as { id?: string; username?: string; expiresAt?: string; isAdmin?: boolean; error?: string };
       if (!response.ok) throw new Error(payload.error || "הפעולה נכשלה.");
       setCaptchaToken(""); setAccountPassword(""); setAccountPasswordConfirm("");
       if (accountMode === "register") { setAccountMode("login"); setAccountError("ההרשמה הצליחה. התחבר עכשיו עם הפרטים שבחרת."); }
-      else { setAccountUser({ id: payload.id!, username: payload.username! }); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null); }
+      else { setAccountUser({ id: payload.id!, username: payload.username!, isAdmin: payload.isAdmin }); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null); }
     } catch (error) { setCaptchaToken(""); setAccountError(error instanceof Error ? error.message : "הפעולה נכשלה."); }
   };
 
@@ -499,7 +499,7 @@ export default function GitHubPagesHome() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
+        <div className="flex items-center gap-2"><PwaControls/><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}<button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
       </div>
     </header>
 

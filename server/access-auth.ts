@@ -12,7 +12,7 @@ const ADMIN_TTL_SECONDS = 60 * 60 * 8;
 
 type AccessRecord = { id: string; code_hash: string; label: string | null; validity_kind: string; validity_seconds: string | number | null; status: string; expires_at?: Date | null };
 type SessionRecord = { id: string; access_code_id: string; expires_at: Date | null; revoked_at: Date | null; code_status: string };
-type AdminRecord = { id: string; email: string; password_hash: string; status: string };
+type AdminRecord = { id: string; email: string; password_hash: string; status: string; user_id?: string | null };
 
 function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 function requestIp(req: Request) { return String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim().slice(0, 200); }
@@ -77,6 +77,34 @@ async function logEvent(pool: Pool, eventType: string, fields: { accessCodeId?: 
 export async function migrateAccessControl(pool: Pool) {
   const sql = await (await import("node:fs/promises")).readFile(new URL("../migrations/002_access_control.sql", import.meta.url), "utf8");
   await pool.query(sql);
+}
+
+export async function ensureLinkedAdmin(pool: Pool) {
+  const user = await pool.query<{ id: string }>("SELECT id FROM user_accounts WHERE lower(username) = 'eliya' AND status = 'active' LIMIT 1");
+  if (!user.rows[0]) return { linked: false };
+  const existing = await pool.query<{ id: string }>("SELECT id FROM admin_accounts WHERE user_id = $1 LIMIT 1", [user.rows[0].id]);
+  if (existing.rows[0]) return { linked: true, userId: user.rows[0].id };
+  const email = `linked-${user.rows[0].id}@admin.local`;
+  const randomAdminSecretHash = await hashSecret(randomBytes(32).toString("base64url"));
+  await pool.query("INSERT INTO admin_accounts(email, password_hash, user_id) VALUES($1,$2,$3) ON CONFLICT (email) DO NOTHING", [email, randomAdminSecretHash, user.rows[0].id]);
+  return { linked: true, userId: user.rows[0].id };
+}
+
+export async function loginLinkedAdmin(pool: Pool, req: Request, res: Response, userId: string) {
+  const result = await pool.query<AdminRecord>("SELECT id, email, password_hash, status, user_id FROM admin_accounts WHERE user_id = $1 AND status = 'active' LIMIT 1", [userId]);
+  const admin = result.rows[0];
+  if (!admin) return false;
+  const token = randomBytes(32).toString("base64url");
+  await pool.query("INSERT INTO admin_sessions(admin_id, token_hash, expires_at, ip, user_agent) VALUES($1,$2,now() + interval '8 hours',$3,$4)", [admin.id, hashToken(token), requestIp(req), userAgent(req)]);
+  await pool.query("UPDATE admin_accounts SET last_login_at = now(), updated_at = now() WHERE id = $1", [admin.id]);
+  await logEvent(pool, "admin_login", { adminId: admin.id, ip: requestIp(req), userAgent: userAgent(req), metadata: { success: true, loginMethod: "linked_user" } });
+  setCookie(res, ADMIN_COOKIE, token, ADMIN_TTL_SECONDS);
+  return true;
+}
+
+export async function isLinkedAdmin(pool: Pool, userId: string) {
+  const result = await pool.query<{ id: string }>("SELECT id FROM admin_accounts WHERE user_id = $1 AND status = 'active' LIMIT 1", [userId]);
+  return Boolean(result.rows[0]);
 }
 
 export async function loginWithAccessCode(pool: Pool, req: Request, res: Response, input: { password: string; captchaToken?: string }) {
