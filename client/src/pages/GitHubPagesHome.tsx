@@ -15,14 +15,10 @@ import {
   type SearchHit,
   type TextMatchMode,
 } from "@/lib/full-dataset-search";
+import { normalizeWebPhonePayload, type PhoneIntelligence, type WebEntityGroup, type WebSearchResult } from "@/lib/web-phone-contract";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api.onrender.com").replace(/\/$/, "");
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const normalizeId = (value: string) => value.replace(/\D/g, "");
-type WebSearchEvidence = { id: string; source: string; url: string; domain: string; independentSource: string; title: string; foundText: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; fullText: boolean; query: string; keywords: string[]; relatedPhones: string[] };
-type WebSearchResult = { title: string; url: string; snippet: string; source: string; query: string; domain: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; relevanceScore: number; relevanceLabel: string; context: string; platforms: string[]; socialProfiles: { platform: string; url: string; username?: string; displayName?: string }[]; evidence: WebSearchEvidence[]; entityLabels: string[]; relatedPhones: string[]; contextKeywords: string[] };
-type WebEntityGroup = { label: string; kind: "business" | "person" | "unknown"; confidence: "strong" | "possible" | "insufficient"; confidenceScore: number; sourceCount: number; supportingSources: string[]; platforms: string[]; socialProfiles: WebSearchResult["socialProfiles"]; reasons: string[]; evidenceIds: string[]; evidence: WebSearchEvidence[]; contradictions: string[] };
-type PhoneIntelligence = { local: string; international: string; country: string; formats: string[]; likelyLineType: "mobile" | "landline" | "unknown" };
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
   { id: "agron2006", label: "אגרון" },
@@ -99,11 +95,6 @@ export default function GitHubPagesHome() {
   const unlocked = sessionStartedAt !== null;
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
-  const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
-  const [captchaToken, setCaptchaToken] = useState("");
-  const [captchaError, setCaptchaError] = useState("");
-  const captchaContainerRef = useRef<HTMLDivElement>(null);
-  const captchaWidgetIdRef = useRef<string | number | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -150,43 +141,6 @@ export default function GitHubPagesHome() {
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (turnstileSiteKey) return;
-    void fetch(`${API_BASE}/api/public-config`, { credentials: "omit" }).then(async (response) => {
-      if (!response.ok) return;
-      const config = await response.json() as { turnstileSiteKey?: string };
-      if (config.turnstileSiteKey) setTurnstileSiteKey(config.turnstileSiteKey);
-    }).catch(() => setCaptchaError("לא ניתן להתחבר לשירות האימות. נסה לרענן את הדף."));
-  }, [turnstileSiteKey]);
-
-  useEffect(() => {
-    if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
-    let disposed = false;
-    let timer: number | undefined;
-    const render = () => {
-      const turnstile = (window as Window & { turnstile?: { render: (element: HTMLElement, options: Record<string, unknown>) => string | number } }).turnstile;
-      if (disposed || !turnstile || !captchaContainerRef.current || captchaWidgetIdRef.current !== null) return Boolean(turnstile);
-      captchaWidgetIdRef.current = turnstile.render(captchaContainerRef.current, {
-        sitekey: turnstileSiteKey,
-        callback: (token: string) => { setCaptchaToken(token); setCaptchaError(""); },
-        "expired-callback": () => { setCaptchaToken(""); setCaptchaError("האימות פג. יש לבצע אותו שוב."); },
-        "error-callback": () => { setCaptchaToken(""); setCaptchaError("Turnstile לא נטען. נסה לרענן או לבטל חוסם פרסומות."); },
-      });
-      return true;
-    };
-    const existing = document.querySelector<HTMLScriptElement>("script[data-turnstile]");
-    if (!existing) {
-      const script = document.createElement("script");
-      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true; script.defer = true; script.dataset.turnstile = "true";
-      script.onerror = () => setCaptchaError("לא ניתן לטעון את האימות האנושי. בדוק חוסם פרסומות.");
-      document.head.appendChild(script);
-    }
-    timer = window.setInterval(() => { if (render() && timer) window.clearInterval(timer); }, 250);
-    render();
-    return () => { disposed = true; if (timer) window.clearInterval(timer); captchaWidgetIdRef.current = null; };
-  }, [unlocked, turnstileSiteKey]);
 
   useEffect(() => {
     void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
@@ -250,16 +204,14 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError("");
     if (!password) { setPasswordError("יש להזין סיסמה."); return; }
-    if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
-      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, captchaToken }) });
+      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password }) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
-        setCaptchaToken("");
         throw new Error(payload.error || "הכניסה נכשלה.");
       }
       const startedAt = Date.now();
-      setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      setPassword(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
@@ -410,9 +362,10 @@ export default function GitHubPagesHome() {
       if (!base && window.location.hostname.endsWith("github.io")) throw new Error("חיפוש אינטרנטי פנימי דורש חיבור Backend. יש להגדיר VITE_API_BASE_URL לכתובת שרת החיפוש.");
       const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: query }), signal: controller.signal });
       const contentType = response.headers.get("content-type") ?? "";
-      const payload = contentType.includes("application/json") ? await response.json() as { phone?: PhoneIntelligence; results?: WebSearchResult[]; groups?: WebEntityGroup[]; analysis?: string; sourceCount?: number; route?: string; incomplete?: boolean; limited?: boolean; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
+      const rawPayload: unknown = contentType.includes("application/json") ? await response.json() : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
+      const payload = normalizeWebPhonePayload(rawPayload);
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
-      setWebSearchResults(payload.results ?? []); setWebPhoneIntelligence(payload.phone ?? null); setWebSearchGroups(payload.groups ?? []); setWebSearchAnalysis(payload.analysis ?? ""); setWebSearchSourceCount(payload.sourceCount ?? payload.results?.length ?? 0); setWebSearchRoute(payload.route ?? "direct"); setWebSearchIncomplete(Boolean(payload.incomplete)); setWebSearchLimited(Boolean(payload.limited)); setWebSearchCompleted(true);
+      setWebSearchResults(payload.results); setWebPhoneIntelligence(payload.phone); setWebSearchGroups(payload.groups); setWebSearchAnalysis(payload.analysis); setWebSearchSourceCount(payload.sourceCount); setWebSearchRoute(payload.route); setWebSearchIncomplete(payload.incomplete); setWebSearchLimited(payload.limited); setWebSearchCompleted(true);
     } catch (error) {
       setWebSearchError(error instanceof DOMException && error.name === "AbortError"
         ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
@@ -478,12 +431,6 @@ export default function GitHubPagesHome() {
           <form onSubmit={unlock} className="mt-7 space-y-3">
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            <div className="rounded-xl border border-white/10 bg-black/15 p-3">
-              <p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p>
-              <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />
-              {!turnstileSiteKey && !captchaError && <p className="text-xs text-white/55">טוען את אפשרות האימות…</p>}
-              {captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}
-            </div>
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
           </form>
