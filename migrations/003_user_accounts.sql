@@ -39,3 +39,4 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id, revoked_at, expires_at);
 CREATE INDEX IF NOT EXISTS idx_access_code_users_user ON access_code_users(user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_user_accounts_status ON user_accounts(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_accounts_username_ci ON user_accounts (lower(username));

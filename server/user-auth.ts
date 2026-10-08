@@ -21,6 +21,7 @@ function clearUserCookie(res: Response) { res.clearCookie(USER_COOKIE, cookieOpt
 function userToken(req: Request) { return parseCookie(req.headers.cookie ?? "")[USER_COOKIE]; }
 function cleanUsername(value: string) { return value.trim().replace(/\s+/g, " "); }
 function validateUsername(value: string) { if (!value || value.length > 120 || /[\u0000-\u001f\u007f]/.test(value)) throw new Error("שם המשתמש אינו תקין."); }
+const RESERVED_USERNAMES = ["admin", "administrator", "root", "owner", "מנהל", "מנהל מערכת"];
 
 async function logUserEvent(pool: Pool, eventType: string, userId?: string, metadata?: unknown) {
   await pool.query("INSERT INTO login_events(event_type, metadata) VALUES($1,$2)", [eventType, { ...(typeof metadata === "object" && metadata ? metadata : {}), userId: userId ?? null }]);
@@ -29,11 +30,20 @@ async function logUserEvent(pool: Pool, eventType: string, userId?: string, meta
 export async function registerUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; captchaToken?: string }) {
   const username = cleanUsername(input.username);
   validateUsername(username);
+  if (RESERVED_USERNAMES.includes(username.toLowerCase())) throw new Error("שם המשתמש שמור למנהל המערכת.");
   if (input.password.length < 8 || input.password.length > 128) throw new Error("הסיסמה חייבת להכיל 8 עד 128 תווים.");
   if (!(await verifyTurnstile(input.captchaToken, requestIp(req)))) throw new Error("האימות האנושי נכשל.");
-  const existing = await pool.query("SELECT id FROM user_accounts WHERE username = $1 LIMIT 1", [username]);
+  const existing = await pool.query("SELECT id FROM user_accounts WHERE lower(username) = lower($1) LIMIT 1", [username]);
   if (existing.rows[0]) throw new Error("שם המשתמש כבר קיים.");
-  const result = await pool.query<{ id: string; username: string }>("INSERT INTO user_accounts(username, password_hash, password_ciphertext) VALUES($1,$2,$3) RETURNING id, username", [username, await hashSecret(input.password), encryptSecret(input.password)]);
+  const admins = await pool.query<{ email: string }>("SELECT email FROM admin_accounts WHERE status = 'active'");
+  if (admins.rows.some((admin) => admin.email.split("@")[0].trim().toLowerCase() === username.toLowerCase())) throw new Error("שם המשתמש שמור למנהל המערכת.");
+  let result: { rows: Array<{ id: string; username: string }> };
+  try {
+    result = await pool.query<{ id: string; username: string }>("INSERT INTO user_accounts(username, password_hash, password_ciphertext) VALUES($1,$2,$3) RETURNING id, username", [username, await hashSecret(input.password), encryptSecret(input.password)]);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "23505") throw new Error("שם המשתמש כבר קיים.");
+    throw error;
+  }
   await logUserEvent(pool, "user_registered", result.rows[0].id);
   return result.rows[0];
 }
@@ -41,7 +51,7 @@ export async function registerUser(pool: Pool, req: Request, res: Response, inpu
 export async function loginUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; rememberMe?: boolean; captchaToken?: string }) {
   if (!(await verifyTurnstile(input.captchaToken, requestIp(req)))) throw new Error("האימות האנושי נכשל.");
   const username = cleanUsername(input.username);
-  const result = await pool.query<UserRecord>("SELECT id, username, password_hash, password_ciphertext, status FROM user_accounts WHERE username = $1 LIMIT 1", [username]);
+  const result = await pool.query<UserRecord>("SELECT id, username, password_hash, password_ciphertext, status FROM user_accounts WHERE lower(username) = lower($1) LIMIT 1", [username]);
   const user = result.rows[0];
   if (!user || user.status !== "active" || !(await verifySecret(input.password, user.password_hash))) throw new Error("שם המשתמש או הסיסמה שגויים.");
   const rememberMe = Boolean(input.rememberMe);
