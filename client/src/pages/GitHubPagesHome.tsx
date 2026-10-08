@@ -15,14 +15,11 @@ import {
   type SearchHit,
   type TextMatchMode,
 } from "@/lib/full-dataset-search";
+import { normalizeWebPhonePayload, type PhoneIntelligence, type WebEntityGroup, type WebSearchResult } from "@/lib/web-phone-contract";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api.onrender.com").replace(/\/$/, "");
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
-type WebSearchEvidence = { id: string; source: string; url: string; domain: string; independentSource: string; title: string; foundText: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; fullText: boolean; query: string; keywords: string[]; relatedPhones: string[] };
-type WebSearchResult = { title: string; url: string; snippet: string; source: string; query: string; domain: string; matchedPhone: string; matchLocation: "page-text" | "provider-snippet"; relevanceScore: number; relevanceLabel: string; context: string; platforms: string[]; socialProfiles: { platform: string; url: string; username?: string; displayName?: string }[]; evidence: WebSearchEvidence[]; entityLabels: string[]; relatedPhones: string[]; contextKeywords: string[] };
-type WebEntityGroup = { label: string; kind: "business" | "person" | "unknown"; confidence: "strong" | "possible" | "insufficient"; confidenceScore: number; sourceCount: number; supportingSources: string[]; platforms: string[]; socialProfiles: WebSearchResult["socialProfiles"]; reasons: string[]; evidenceIds: string[]; evidence: WebSearchEvidence[]; contradictions: string[] };
-type PhoneIntelligence = { local: string; international: string; country: string; formats: string[]; likelyLineType: "mobile" | "landline" | "unknown" };
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
   { id: "all", label: "הכול" },
   { id: "agron2006", label: "אגרון" },
@@ -185,7 +182,9 @@ export default function GitHubPagesHome() {
     if (!existing) {
       const script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true; script.defer = true; script.dataset.turnstile = "true";
+      script.async = true;
+      script.defer = true;
+      script.dataset.turnstile = "true";
       script.onerror = () => setCaptchaError("לא ניתן לטעון את האימות האנושי. בדוק חוסם פרסומות.");
       document.head.appendChild(script);
     }
@@ -254,7 +253,7 @@ export default function GitHubPagesHome() {
       setExportingFamilyId(null);
     }
   };
-  const unlock = async (event: FormEvent<HTMLFormElement>) => {
+  const submitAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordError(""); setAccountError("");
     if (!accountUsername.trim() || !password) { setPasswordError("יש להזין שם משתמש וסיסמה."); return; }
@@ -424,9 +423,10 @@ export default function GitHubPagesHome() {
       if (!base && window.location.hostname.endsWith("github.io")) throw new Error("חיפוש אינטרנטי פנימי דורש חיבור Backend. יש להגדיר VITE_API_BASE_URL לכתובת שרת החיפוש.");
       const response = await fetch(`${base}/api/web-phone-search`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: query }), signal: controller.signal });
       const contentType = response.headers.get("content-type") ?? "";
-      const payload = contentType.includes("application/json") ? await response.json() as { phone?: PhoneIntelligence; results?: WebSearchResult[]; groups?: WebEntityGroup[]; analysis?: string; sourceCount?: number; route?: string; incomplete?: boolean; limited?: boolean; error?: string } : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
+      const rawPayload: unknown = contentType.includes("application/json") ? await response.json() : { error: "שרת החיפוש החזיר דף HTML במקום תשובת API. יש לבדוק את VITE_API_BASE_URL." };
+      const payload = normalizeWebPhonePayload(rawPayload);
       if (!response.ok) throw new Error(payload.error || "חיפוש האינטרנט נכשל.");
-      setWebSearchResults(payload.results ?? []); setWebPhoneIntelligence(payload.phone ?? null); setWebSearchGroups(payload.groups ?? []); setWebSearchAnalysis(payload.analysis ?? ""); setWebSearchSourceCount(payload.sourceCount ?? payload.results?.length ?? 0); setWebSearchRoute(payload.route ?? "direct"); setWebSearchIncomplete(Boolean(payload.incomplete)); setWebSearchLimited(Boolean(payload.limited)); setWebSearchCompleted(true);
+      setWebSearchResults(payload.results); setWebPhoneIntelligence(payload.phone); setWebSearchGroups(payload.groups); setWebSearchAnalysis(payload.analysis); setWebSearchSourceCount(payload.sourceCount); setWebSearchRoute(payload.route); setWebSearchIncomplete(payload.incomplete); setWebSearchLimited(payload.limited); setWebSearchCompleted(true);
     } catch (error) {
       setWebSearchError(error instanceof DOMException && error.name === "AbortError"
         ? "שרת החיפוש לא הגיב בתוך 35 שניות. ייתכן ששירות Render עדיין מתעורר או שהחיפוש דרך הספק אינו זמין. נסה שוב בעוד רגע."
@@ -518,7 +518,7 @@ export default function GitHubPagesHome() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>נעילה</button></div>
+        <div className="flex items-center gap-2"><PwaControls/><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}<button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
       </div>
     </header>
 

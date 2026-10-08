@@ -71,6 +71,11 @@ async function startServer() {
       if (req.method === "OPTIONS") { res.status(204).end(); return; }
       next();
     });
+    app.post("/api/account/register", async (req, res) => { try { res.status(201).json(await registerUser(pool, req, res, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "ההרשמה נכשלה." }); } });
+    app.post("/api/account/login", async (req, res) => { try { res.json(await loginUser(pool, req, res, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), rememberMe: Boolean(req.body?.rememberMe), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "ההתחברות נכשלה." }); } });
+    app.post("/api/account/logout", async (req, res) => { await logoutUser(pool, req, res); res.json({ success: true }); });
+    app.get("/api/account/me", async (req, res) => { const state = await getUserAccess(pool, req); res.json({ authenticated: Boolean(state.session), user: state.session ? { id: state.session.user_id, username: state.session.username, isAdmin: await isLinkedAdmin(pool, state.session.user_id) } : null, access: state.access ? { label: state.access.label, expiresAt: state.access.expires_at } : null }); });
+    app.post("/api/account/access-code", async (req, res) => { try { res.json(await activateAccessCode(pool, req, res, { code: String(req.body?.code ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הפעלת הקוד נכשלה." }); } });
     app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
     app.post("/api/access/logout", async (req, res) => { await logoutAccess(pool, req, res); res.json({ success: true }); });
     app.get("/api/access/me", async (req, res) => { const session = await getAccessSession(pool, req); res.json({ authenticated: Boolean(session), expiresAt: session?.expires_at?.toISOString() ?? null }); });
@@ -84,6 +89,11 @@ async function startServer() {
     app.post("/api/admin/logout", async (req, res) => { await logoutAdmin(pool, req, res); res.json({ success: true }); });
     app.get("/api/admin/stats", requireAdmin(pool), async (_req, res) => { res.json(await accessStats(pool)); });
     app.get("/api/admin/access-codes", requireAdmin(pool), async (_req, res) => { res.json({ items: await listAccessCodes(pool) }); });
+    app.get("/api/admin/users", requireAdmin(pool), async (_req, res) => { res.json({ items: await listUsers(pool) }); });
+    app.post("/api/admin/users/:id/status", requireAdmin(pool), async (req, res) => { try { const status = String(req.body?.status ?? ""); if (!["active", "blocked", "deleted"].includes(status)) throw new Error("סטטוס לא תקין."); await setUserStatus(pool, req.params.id, status as "active" | "blocked" | "deleted"); res.json({ success: true }); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "עדכון המשתמש נכשל." }); } });
+    app.post("/api/admin/users/:id/sessions/revoke", requireAdmin(pool), async (req, res) => { await revokeUserSessions(pool, req.params.id); res.json({ success: true }); });
+    app.post("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { await resetUserPassword(pool, req.params.id, String(req.body?.password ?? "")); res.json({ success: true }); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "איפוס הסיסמה נכשל." }); } });
+    app.get("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealUserPassword(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
     app.get("/api/admin/access-codes/:id/secret", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealAccessCode(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
     app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds), maxUsers: req.body?.maxUsers == null || req.body.maxUsers === "" ? null : Number(req.body.maxUsers), maxSearches: req.body?.maxSearches == null || req.body.maxSearches === "" ? null : Number(req.body.maxSearches) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
     app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
@@ -121,7 +131,7 @@ async function startServer() {
     res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    if (req.method === "OPTIONS") { res.status(204).end(); return; }
+      if (req.method === "OPTIONS") { res.status(204).end(); return; }
     next();
   });
   app.post("/api/web-phone-search", async (req, res) => {

@@ -120,9 +120,8 @@ describe("filterExactPhoneResults", () => {
     expect(groups[0]).toMatchObject({ label: "דוגמה שירותים", confidence: "possible", sourceCount: 2 });
     expect(groups[0].evidence).toHaveLength(2);
   });
+
 });
-
-
 describe("deterministic web entity resolution", () => {
   const base = { source: "Tavily", query, matchedPhone: "050-1234567", relevanceScore: 80, relevanceLabel: "גבוהה" as const, matchLocation: "page-text" as const };
 
