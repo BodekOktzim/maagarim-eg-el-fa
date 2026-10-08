@@ -14,8 +14,8 @@ import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 import { searchPublicPhone } from "../web-phone-search";
-import { accessStats, bootstrapAdmin, createAccessCode, decryptSecret, getAccessSession, hashSecret, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode } from "../access-auth";
-import { activateAccessCode, getUserAccess, loginUser, logoutUser, registerUser, listUsers, setUserStatus, revokeUserSessions, resetUserPassword, revealUserPassword } from "../user-auth";
+import { accessStats, bootstrapAdmin, createAccessCode, decryptSecret, getAccessSession, hashSecret, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode, resetAccessStats } from "../access-auth";
+import { activateAccessCode, consumeSearch, getUserAccess, loginUser, logoutUser, registerUser, listUsers, setUserStatus, revokeUserSessions, resetUserPassword, revealUserPassword } from "../user-auth";
 import { requireUserSearch } from "../linked-account-auth";
 import { isLinkedAdmin } from "../access-auth";
 
@@ -78,6 +78,7 @@ async function startServer() {
     app.post("/api/account/logout", async (req, res) => { await logoutUser(pool, req, res); res.json({ success: true }); });
     app.get("/api/account/me", async (req, res) => { const state = await getUserAccess(pool, req); res.json({ authenticated: Boolean(state.session), user: state.session ? { id: state.session.user_id, username: state.session.username, isAdmin: await isLinkedAdmin(pool, state.session.user_id) } : null, access: state.access ? { label: state.access.label, expiresAt: state.access.expires_at } : null }); });
     app.post("/api/account/access-code", async (req, res) => { try { res.json(await activateAccessCode(pool, req, res, { code: String(req.body?.code ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הפעלת הקוד נכשלה." }); } });
+    app.post("/api/account/consume-search", async (req, res) => { try { res.json(await consumeSearch(pool, req)); } catch (error) { res.status(403).json({ error: error instanceof Error ? error.message : "אין הרשאת חיפוש." }); } });
     app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
     app.post("/api/access/logout", async (req, res) => { await logoutAccess(pool, req, res); res.json({ success: true }); });
     app.get("/api/access/me", async (req, res) => { const session = await getAccessSession(pool, req); res.json({ authenticated: Boolean(session), expiresAt: session?.expires_at?.toISOString() ?? null }); });
@@ -85,6 +86,7 @@ async function startServer() {
     app.post("/api/admin/login", async (req, res) => { try { res.json(await loginAdmin(pool, req, res, { email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "התחברות מנהל נכשלה." }); } });
     app.post("/api/admin/logout", async (req, res) => { await logoutAdmin(pool, req, res); res.json({ success: true }); });
     app.get("/api/admin/stats", requireAdmin(pool), async (_req, res) => { res.json(await accessStats(pool)); });
+    app.post("/api/admin/stats/reset", requireAdmin(pool), async (_req, res) => { res.json(await resetAccessStats(pool)); });
     app.get("/api/admin/access-codes", requireAdmin(pool), async (_req, res) => { res.json({ items: await listAccessCodes(pool) }); });
     app.get("/api/admin/users", requireAdmin(pool), async (_req, res) => { res.json({ items: await listUsers(pool) }); });
     app.post("/api/admin/users/:id/sessions/revoke", requireAdmin(pool), async (req, res) => { await revokeUserSessions(pool, req.params.id); res.json({ success: true }); });
@@ -92,12 +94,12 @@ async function startServer() {
     app.post("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { await resetUserPassword(pool, req.params.id, String(req.body?.password ?? "")); res.json({ success: true }); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "איפוס הסיסמה נכשל." }); } });
     app.get("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealUserPassword(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
     app.get("/api/admin/access-codes/:id/secret", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealAccessCode(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
-    app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds), maxUsers: req.body?.maxUsers == null || req.body.maxUsers === "" ? null : Number(req.body.maxUsers), maxSearches: req.body?.maxSearches == null || req.body.maxSearches === "" ? null : Number(req.body.maxSearches) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
+    app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null || req.body.validitySeconds === "" ? null : Number(req.body.validitySeconds), expiresAt: req.body?.expiresAt || null, maxUsers: req.body?.maxUsers == null || req.body.maxUsers === "" ? null : Number(req.body.maxUsers), maxSearches: req.body?.maxSearches == null || req.body.maxSearches === "" ? null : Number(req.body.maxSearches) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
     app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
     app.delete("/api/admin/access-codes/:id", requireAdmin(pool), async (req, res) => { await deleteAccessCode(pool, req.params.id); res.status(204).end(); });
     const requireSearchAuthorization = (req: express.Request, res: express.Response, next: express.NextFunction) => {
       const hasAccountCookie = String(req.headers.cookie ?? "").includes("__Host-maagarim_user=");
-      return (hasAccountCookie ? requireUserSearch(pool, true) : requireAccess(pool))(req, res, next);
+      return (hasAccountCookie ? requireUserSearch(pool, false) : requireAccess(pool))(req, res, next);
     };
     app.get("/api/protected-range", requireSearchAuthorization, async (req, res) => {
       let target: URL;

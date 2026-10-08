@@ -101,6 +101,8 @@ export default function GitHubPagesHome() {
   const [rememberMe, setRememberMe] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accountError, setAccountError] = useState("");
+  const [quota, setQuota] = useState<{ remaining: number | null; maxSearches: number | null; expiresAt: string | null }>({ remaining: null, maxSearches: null, expiresAt: null });
+  const [quotaNow, setQuotaNow] = useState(() => Date.now());
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
@@ -197,16 +199,18 @@ export default function GitHubPagesHome() {
   useEffect(() => {
     void fetch(`${API_BASE}/api/account/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
-      const payload = await response.json() as { authenticated?: boolean; user?: { username: string; isAdmin?: boolean }; session?: { expiresAt?: string | null }; access?: { active?: boolean; expiresAt?: string | null } | null };
+      const payload = await response.json() as { authenticated?: boolean; user?: { username: string; isAdmin?: boolean }; session?: { expiresAt?: string | null }; access?: { max_searches?: number | null; search_count?: number; expires_at?: string | null; expiresAt?: string | null } | null };
       if (payload.authenticated) {
         if (payload.user) setAccountUser(payload.user);
         setAccountAuthenticated(true);
         if (!payload.access) return;
+        setQuota({ remaining: payload.access.max_searches == null ? null : Math.max(0, Number(payload.access.max_searches) - Number(payload.access.search_count ?? 0)), maxSearches: payload.access.max_searches == null ? null : Number(payload.access.max_searches), expiresAt: payload.access.expiresAt ?? payload.access.expires_at ?? null });
         setSessionStartedAt(Date.now());
         setSessionExpiresAt(payload.session?.expiresAt ? Date.parse(payload.session.expiresAt) : null);
       }
     }).catch(() => undefined);
   }, []);
+  useEffect(() => { const timer = window.setInterval(() => setQuotaNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
 
   const clearTree = () => { setFamilyData(null); setFamilyCentralId(""); setFamilyError(""); setFamilyDurationMs(null); };
   const exportSearchResults = async () => {
@@ -317,6 +321,14 @@ export default function GitHubPagesHome() {
 
   const executeSearch = async (description: string, search: () => Promise<SearchHit[]>, force = false) => {
     if (isSearching && !force) return;
+    if (!force) {
+      try {
+        const response = await fetch(`${API_BASE}/api/account/consume-search`, { method: "POST", credentials: "include" });
+        const payload = await response.json() as { remaining?: number | null; maxSearches?: number | null; expiresAt?: string | null; error?: string };
+        if (!response.ok) throw new Error(payload.error || "אין הרשאת חיפוש פעילה.");
+        setQuota({ remaining: payload.remaining ?? null, maxSearches: payload.maxSearches ?? null, expiresAt: payload.expiresAt ?? null });
+      } catch (error) { rejectSearch(error instanceof Error ? error.message : "אין הרשאת חיפוש פעילה."); return; }
+    }
     const runId = ++searchRunRef.current;
     activeSearchRef.current = { description, search, startedAt: Date.now() };
     sessionStorage.setItem("maagarim-pending-search", JSON.stringify({ description, startedAt: Date.now() }));
@@ -514,6 +526,8 @@ export default function GitHubPagesHome() {
     </div>;
   }
 
+  const quotaSecondsLeft = quota.expiresAt ? Math.max(0, Math.ceil((Date.parse(quota.expiresAt) - quotaNow) / 1000)) : null;
+  const quotaClock = quotaSecondsLeft == null ? "ללא תאריך סיום" : `${Math.floor(quotaSecondsLeft / 86400)} ימים ${String(Math.floor((quotaSecondsLeft % 86400) / 3600)).padStart(2, "0")}:${String(Math.floor((quotaSecondsLeft % 3600) / 60)).padStart(2, "0")}:${String(quotaSecondsLeft % 60).padStart(2, "0")}`;
   if (!unlocked) return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100"><main className="w-full max-w-xl rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9"><h1 className="text-2xl font-bold">נדרשת הרשאת גישה</h1><p className="mt-3 text-sm leading-6 text-white/70">החשבון שלך מחובר, אך אין לך כרגע קוד גישה פעיל.</p><form onSubmit={activateCode} className="mt-6 space-y-3"><input autoFocus value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="קוד גישה" className="h-14 w-full rounded-xl bg-white px-4 text-slate-900"/>{accountError && <p role="alert" className="text-sm text-rose-200">{accountError}</p>}<button className="h-12 w-full rounded-xl bg-[#f2a9d2] font-semibold text-[#30123e]">הפעל קוד</button></form><button type="button" onClick={lock} className="mt-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">יציאה</button></main></div>;
 
   return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
@@ -528,6 +542,7 @@ export default function GitHubPagesHome() {
       <section className="search-hero overflow-hidden rounded-[28px] border border-fuchsia-200/10 bg-[#20102b] px-5 py-6 shadow-[0_24px_80px_rgba(46,24,61,0.3)] sm:px-9 sm:py-9">
         <div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-fuchsia-200/70">חיפוש בשלושת מקורות הנתונים</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">חיפוש אדם</h1></div><div className="hidden rounded-2xl border border-fuchsia-100/10 bg-black/10 px-4 py-3 text-xs text-white/45 sm:block"><UsersRound size={15} className="ml-2 inline text-fuchsia-200"/>19.6 מיליון רשומות במקורות</div></div>
         <div className="mt-4 rounded-xl border border-amber-200/15 bg-amber-200/[0.05] p-3 text-xs leading-5 text-amber-100/90" role="note"><Info size={14} className="ml-1 inline align-text-bottom"/> מקור הנתונים הציבורי אינו גבול אבטחה מלא: ניתן לעקוף את האתר ולבקש קובצי GitHub/LFS ישירות.</div>
+        <div className={`mt-4 grid gap-3 rounded-2xl border p-4 sm:grid-cols-2 ${quota.remaining !== null && quota.remaining === 0 ? "border-rose-300/30 bg-rose-300/10" : "border-emerald-200/20 bg-emerald-200/[0.06]"}`}><div><p className="text-xs text-white/55">יתרת חיפושים</p><p className="mt-1 text-xl font-bold">{quota.remaining === null ? "ללא הגבלה" : `${quota.remaining} מתוך ${quota.maxSearches}`}</p></div><div className="sm:text-left"><p className="text-xs text-white/55">זמן שנותר להרשאה</p><p className="mt-1 font-mono text-sm font-semibold">{quotaClock}</p></div></div>
 
         <div className="mt-5 space-y-4" aria-label="חיפוש לפי מקור">
           <div className="rounded-2xl border border-white/10 bg-black/10 p-3" aria-label="בחירת מקור החיפוש">

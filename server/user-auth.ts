@@ -10,7 +10,7 @@ const REMEMBER_SESSION_SECONDS = 60 * 60 * 24 * 90;
 
 type UserRecord = { id: string; username: string; password_hash: string; password_ciphertext: string | null; status: "active" | "blocked" | "deleted" };
 type UserSession = { id: string; user_id: string; username: string; user_status: UserRecord["status"]; expires_at: Date | null; remember_me: boolean };
-type AccessCode = { id: string; code_hash: string; status: string; validity_kind: string; validity_seconds: string | number | null; expires_at: Date | null; max_users: number | null };
+type AccessCode = { id: string; code_hash: string; status: string; validity_kind: string; validity_seconds: string | number | null; expires_at: Date | null; max_users: number | null; max_searches: number | null; search_count: number };
 
 function hashToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
 function requestIp(req: Request) { return String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim().slice(0, 200); }
@@ -92,7 +92,7 @@ export async function logoutUser(pool: Pool, req: Request, res: Response) {
 export async function activateAccessCode(pool: Pool, req: Request, res: Response, input: { code: string }) {
   const session = await getUserSession(pool, req);
   if (!session) throw new Error("נדרשת התחברות לחשבון.");
-  const candidates = await pool.query<AccessCode>("SELECT id, code_hash, status, validity_kind, validity_seconds, expires_at, max_users FROM access_codes WHERE status = 'active' AND deleted_at IS NULL");
+  const candidates = await pool.query<AccessCode>("SELECT id, code_hash, status, validity_kind, validity_seconds, expires_at, max_users, max_searches, search_count FROM access_codes WHERE status = 'active' AND deleted_at IS NULL");
   let matched: AccessCode | undefined;
   for (const candidate of candidates.rows) if (await verifySecret(input.code.trim(), candidate.code_hash)) { matched = candidate; break; }
   if (!matched) throw new Error("קוד הגישה שגוי.");
@@ -108,11 +108,25 @@ export async function activateAccessCode(pool: Pool, req: Request, res: Response
 export async function getUserAccess(pool: Pool, req: Request) {
   const session = await getUserSession(pool, req);
   if (!session) return { session: null, access: null };
-  const access = await pool.query("SELECT c.id, c.label, g.expires_at FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [session.user_id]);
+  const access = await pool.query("SELECT c.id, c.label, g.expires_at, c.max_searches, c.search_count, c.validity_seconds FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [session.user_id]);
   return { session, access: access.rows[0] ?? null };
 }
 
 export async function requireUserAccess(pool: Pool, req: Request) { const state = await getUserAccess(pool, req); if (!state.session) throw new Error("נדרשת התחברות לחשבון."); if (!state.access) throw new Error("נדרשת הרשאת גישה."); return state; }
+
+export async function consumeSearch(pool: Pool, req: Request) {
+  const session = await getUserSession(pool, req); if (!session) throw new Error("נדרשת התחברות לחשבון.");
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const rows = (await client.query("SELECT c.id, c.max_searches, c.search_count, g.expires_at FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC FOR UPDATE", [session.user_id])).rows;
+    const code = rows.find((row) => row.max_searches == null || Number(row.search_count) < Number(row.max_searches));
+    if (!code) throw new Error("מכסת החיפושים הסתיימה.");
+    if (code.max_searches != null) await client.query("UPDATE access_codes SET search_count = search_count + 1, updated_at = now() WHERE id = $1 AND search_count < max_searches", [code.id]);
+    await client.query("COMMIT");
+    return { remaining: code.max_searches == null ? null : Math.max(0, Number(code.max_searches) - Number(code.search_count) - 1), maxSearches: code.max_searches == null ? null : Number(code.max_searches), expiresAt: code.expires_at ? new Date(code.expires_at).toISOString() : null };
+  } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+}
 
 export async function listUsers(pool: Pool) { return (await pool.query("SELECT u.id, u.username, u.status, u.created_at, u.last_login_at, u.search_count, count(DISTINCT s.id) FILTER (WHERE s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now()))::int AS active_sessions, count(DISTINCT g.access_code_id)::int AS access_codes FROM user_accounts u LEFT JOIN user_sessions s ON s.user_id = u.id LEFT JOIN access_code_user_grants g ON g.user_id = u.id AND (g.expires_at IS NULL OR g.expires_at > now()) WHERE u.status <> 'deleted' GROUP BY u.id ORDER BY u.created_at DESC")).rows; }
 export async function setUserStatus(pool: Pool, id: string, status: "active" | "blocked" | "deleted") { await pool.query("UPDATE user_accounts SET status = $1, updated_at = now() WHERE id = $2", [status, id]); if (status !== "active") await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [id]); }
