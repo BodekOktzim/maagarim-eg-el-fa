@@ -43,13 +43,13 @@ function encryptionKey() {
   if (!configured) throw new Error("ACCESS_SECRET_KEY is not configured");
   return createHash("sha256").update(configured).digest();
 }
-function encryptSecret(secret: string) {
+export function encryptSecret(secret: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
   return `v1$${iv.toString("base64url")}$${cipher.getAuthTag().toString("base64url")}$${encrypted.toString("base64url")}`;
 }
-function decryptSecret(encoded: string) {
+export function decryptSecret(encoded: string) {
   const [, ivText, tagText, dataText] = encoded.split("$");
   if (!ivText || !tagText || !dataText) throw new Error("סיסמה מוצפנת אינה תקינה.");
   const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(ivText, "base64url"));
@@ -57,7 +57,7 @@ function decryptSecret(encoded: string) {
   return Buffer.concat([decipher.update(Buffer.from(dataText, "base64url")), decipher.final()]).toString("utf8");
 }
 
-async function verifyTurnstile(token: unknown, ip: string) {
+export async function verifyTurnstile(token: unknown, ip: string) {
   const secret = process.env.TURNSTILE_SECRET_KEY?.trim();
   if (!secret) {
     if (isProduction()) throw new Error("CAPTCHA is not configured");
@@ -114,7 +114,7 @@ export function requireAccess(pool: Pool) { return async (req: Request, res: Res
 
 export async function logoutAccess(pool: Pool, req: Request, res: Response) { const token = getCookie(req, ACCESS_COOKIE); if (token) await pool.query("UPDATE access_sessions SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [hashToken(token)]); clearCookie(res, ACCESS_COOKIE); }
 
-export async function createAccessCode(pool: Pool, input: { password?: string; label?: string; validitySeconds?: number | null }) { const password = input.password?.trim() || generateAccessCode(); if (password.length < 6 || password.length > 128) throw new Error("סיסמת הגישה חייבת להכיל 6 עד 128 תווים."); const codeHash = await hashSecret(password); const secretCiphertext = encryptSecret(password); const kind = input.validitySeconds == null ? "unlimited" : "fixed"; await pool.query("INSERT INTO access_codes(code_hash, secret_ciphertext, label, validity_kind, validity_seconds) VALUES($1,$2,$3,$4,$5)", [codeHash, secretCiphertext, input.label?.trim() || null, kind, input.validitySeconds]); return { password, validityKind: kind, validitySeconds: input.validitySeconds ?? null }; }
+export async function createAccessCode(pool: Pool, input: { password?: string; label?: string; validitySeconds?: number | null; maxUsers?: number | null }) { const password = input.password?.trim() || generateAccessCode(); if (password.length < 6 || password.length > 128) throw new Error("סיסמת הגישה חייבת להכיל 6 עד 128 תווים."); const maxUsers = input.maxUsers == null ? null : Math.max(1, Math.floor(input.maxUsers)); const codeHash = await hashSecret(password); const secretCiphertext = encryptSecret(password); const kind = input.validitySeconds == null ? "unlimited" : "fixed"; await pool.query("INSERT INTO access_codes(code_hash, secret_ciphertext, label, validity_kind, validity_seconds, max_users) VALUES($1,$2,$3,$4,$5,$6)", [codeHash, secretCiphertext, input.label?.trim() || null, kind, input.validitySeconds, maxUsers]); return { password, validityKind: kind, validitySeconds: input.validitySeconds ?? null, maxUsers }; }
 
 async function getAdmin(pool: Pool, req: Request) { const token = getCookie(req, ADMIN_COOKIE); if (!token) return null; const result = await pool.query<AdminRecord>("SELECT a.id, a.email, a.password_hash, a.status FROM admin_sessions s JOIN admin_accounts a ON a.id = s.admin_id WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND a.status = 'active' LIMIT 1", [hashToken(token)]); return result.rows[0] ?? null; }
 export function requireAdmin(pool: Pool) { return async (req: Request, res: Response, next: NextFunction) => { try { const admin = await getAdmin(pool, req); if (!admin) { res.status(401).json({ error: "נדרשת התחברות מנהל." }); return; } (req as Request & { admin?: AdminRecord }).admin = admin; next(); } catch (error) { next(error); } }; }
@@ -122,7 +122,7 @@ export async function loginAdmin(pool: Pool, req: Request, res: Response, input:
 export async function logoutAdmin(pool: Pool, req: Request, res: Response) { const token = getCookie(req, ADMIN_COOKIE); if (token) await pool.query("UPDATE admin_sessions SET revoked_at = now() WHERE token_hash = $1", [hashToken(token)]); clearCookie(res, ADMIN_COOKIE); }
 export async function bootstrapAdmin(pool: Pool, input: { bootstrapSecret: string; email: string; password: string }) { const expected = process.env.ADMIN_BOOTSTRAP_SECRET?.trim(); if (!expected || input.bootstrapSecret !== expected) throw new Error("פרטי bootstrap שגויים."); const count = await pool.query<{ count: string }>("SELECT count(*)::text AS count FROM admin_accounts"); if (Number(count.rows[0]?.count ?? 0) > 0) throw new Error("Admin כבר הוגדר."); if (input.password.length < 12) throw new Error("סיסמת מנהל חייבת להכיל לפחות 12 תווים."); const result = await pool.query<{ id: string; email: string }>("INSERT INTO admin_accounts(email, password_hash) VALUES($1,$2) RETURNING id, email", [input.email.trim().toLowerCase(), await hashSecret(input.password)]); return result.rows[0]; }
 
-export async function listAccessCodes(pool: Pool) { return (await pool.query("SELECT id, label, validity_kind, validity_seconds, status, created_at, first_used_at, last_used_at, use_count, login_count, revoked_at, (secret_ciphertext IS NOT NULL) AS has_secret FROM access_codes WHERE deleted_at IS NULL ORDER BY created_at DESC")).rows; }
+export async function listAccessCodes(pool: Pool) { return (await pool.query("SELECT id, label, validity_kind, validity_seconds, max_users, status, created_at, first_used_at, last_used_at, use_count, login_count, revoked_at, (secret_ciphertext IS NOT NULL) AS has_secret FROM access_codes WHERE deleted_at IS NULL ORDER BY created_at DESC")).rows; }
 export async function revealAccessCode(pool: Pool, id: string) { const result = await pool.query<{ secret_ciphertext: string | null }>("SELECT secret_ciphertext FROM access_codes WHERE id = $1 AND deleted_at IS NULL LIMIT 1", [id]); const ciphertext = result.rows[0]?.secret_ciphertext; if (!ciphertext) throw new Error("לסיסמה הישנה אין עותק מוצפן להצגה. יש ליצור סיסמה חדשה."); return decryptSecret(ciphertext); }
 export async function revokeAccessCode(pool: Pool, id: string, disconnect: boolean) { await pool.query("UPDATE access_codes SET status = 'revoked', revoked_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL", [id]); if (disconnect) await pool.query("UPDATE access_sessions SET revoked_at = now() WHERE access_code_id = $1 AND revoked_at IS NULL", [id]); }
 export async function deleteAccessCode(pool: Pool, id: string) { await pool.query("UPDATE access_codes SET status = 'deleted', deleted_at = now(), updated_at = now() WHERE id = $1", [id]); }
