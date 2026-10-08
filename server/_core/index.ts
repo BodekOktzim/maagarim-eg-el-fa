@@ -14,7 +14,8 @@ import { isPCloudConfigured, uploadFileToPCloud } from "../pcloud";
 import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 import { searchPublicPhone } from "../web-phone-search";
-import { accessStats, bootstrapAdmin, createAccessCode, getAccessSession, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode } from "../access-auth";
+import { accessStats, bootstrapAdmin, createAccessCode, decryptSecret, getAccessSession, hashSecret, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode } from "../access-auth";
+import { activateAccessCode, createUser, getAccount, loginUser, logoutUser, requireUserSearch } from "../linked-account-auth";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -55,11 +56,11 @@ async function startServer() {
   });
   const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
   const persisted = accessPool ? new accessPool() : null;
-  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); }
+  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); const userMigration = await (await import("node:fs/promises")).readFile(new URL("../../migrations/003_user_accounts.sql", import.meta.url), "utf8"); await persisted.pool.query(userMigration); }
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   if (persisted) {
     const pool = persisted.pool;
-    app.use(["/api/access", "/api/admin", "/api/protected-range"], (req, res, next) => {
+    app.use(["/api/access", "/api/account", "/api/admin", "/api/protected-range"], (req, res, next) => {
       const allowedOrigin = process.env.WEB_APP_ALLOWED_ORIGIN || "";
       if (allowedOrigin && req.headers.origin === allowedOrigin) {
         res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
@@ -73,16 +74,31 @@ async function startServer() {
     app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });
     app.post("/api/access/logout", async (req, res) => { await logoutAccess(pool, req, res); res.json({ success: true }); });
     app.get("/api/access/me", async (req, res) => { const session = await getAccessSession(pool, req); res.json({ authenticated: Boolean(session), expiresAt: session?.expires_at?.toISOString() ?? null }); });
+    app.post("/api/account/register", async (req, res) => { try { res.status(201).json(await createUser(pool, req, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), turnstileToken: req.body?.turnstileToken })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "ההרשמה נכשלה." }); } });
+    app.post("/api/account/login", async (req, res) => { try { res.json(await loginUser(pool, req, res, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), rememberMe: Boolean(req.body?.rememberMe), turnstileToken: req.body?.turnstileToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "ההתחברות נכשלה." }); } });
+    app.post("/api/account/logout", async (req, res) => { await logoutUser(pool, req, res); res.json({ success: true }); });
+    app.get("/api/account/me", async (req, res) => { res.json(await getAccount(pool, req)); });
+    app.post("/api/account/activate-code", async (req, res) => { try { res.json(await activateAccessCode(pool, req, { code: String(req.body?.code ?? "") })); } catch (error) { res.status(403).json({ error: error instanceof Error ? error.message : "הפעלת הקוד נכשלה." }); } });
     app.post("/api/admin/bootstrap", async (req, res) => { try { res.status(201).json(await bootstrapAdmin(pool, { bootstrapSecret: String(req.headers["x-admin-bootstrap-secret"] ?? req.body?.bootstrapSecret ?? ""), email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת מנהל נכשלה." }); } });
     app.post("/api/admin/login", async (req, res) => { try { res.json(await loginAdmin(pool, req, res, { email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "התחברות מנהל נכשלה." }); } });
     app.post("/api/admin/logout", async (req, res) => { await logoutAdmin(pool, req, res); res.json({ success: true }); });
     app.get("/api/admin/stats", requireAdmin(pool), async (_req, res) => { res.json(await accessStats(pool)); });
     app.get("/api/admin/access-codes", requireAdmin(pool), async (_req, res) => { res.json({ items: await listAccessCodes(pool) }); });
     app.get("/api/admin/access-codes/:id/secret", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealAccessCode(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
-    app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
+    app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null ? null : Number(req.body.validitySeconds), maxUsers: req.body?.maxUsers == null || req.body.maxUsers === "" ? null : Number(req.body.maxUsers), maxSearches: req.body?.maxSearches == null || req.body.maxSearches === "" ? null : Number(req.body.maxSearches) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
     app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
     app.delete("/api/admin/access-codes/:id", requireAdmin(pool), async (req, res) => { await deleteAccessCode(pool, req.params.id); res.status(204).end(); });
-    app.get("/api/protected-range", requireAccess(pool), async (req, res) => {
+    app.get("/api/admin/users", requireAdmin(pool), async (req, res) => { const search = String(req.query.search ?? "").trim(); const result = await pool.query("SELECT u.id, u.username, u.status, u.created_at, u.last_login_at, u.search_count, count(DISTINCT s.id)::int AS active_sessions, count(DISTINCT g.access_code_id)::int AS access_codes, max(g.expires_at) AS access_expires_at FROM user_accounts u LEFT JOIN user_sessions s ON s.user_id = u.id AND s.revoked_at IS NULL AND s.expires_at > now() LEFT JOIN access_code_user_grants g ON g.user_id = u.id AND (g.expires_at IS NULL OR g.expires_at > now()) WHERE ($1 = '' OR u.username ILIKE '%' || $1 || '%') GROUP BY u.id ORDER BY u.created_at DESC", [search]); res.json({ items: result.rows }); });
+    app.post("/api/admin/users/:id/status", requireAdmin(pool), async (req, res) => { const status = req.body?.status === "blocked" ? "blocked" : "active"; await pool.query("UPDATE user_accounts SET status = $1, updated_at = now() WHERE id = $2", [status, req.params.id]); if (status === "blocked") await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [req.params.id]); res.json({ success: true, status }); });
+    app.post("/api/admin/users/:id/reset-password", requireAdmin(pool), async (req, res) => { const nextPassword = String(req.body?.password ?? ""); if (nextPassword.length < 8 || nextPassword.length > 128) { res.status(400).json({ error: "הסיסמה חייבת להכיל 8–128 תווים." }); return; } await pool.query("UPDATE user_accounts SET password_hash = $1, password_ciphertext = $2, updated_at = now() WHERE id = $3", [await hashSecret(nextPassword), (await import("../access-auth")).encryptSecret(nextPassword), req.params.id]); await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [req.params.id]); res.json({ success: true }); });
+    app.get("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { const result = await pool.query<{ password_ciphertext: string | null }>("SELECT password_ciphertext FROM user_accounts WHERE id = $1", [req.params.id]); const secret = result.rows[0]?.password_ciphertext; if (!secret) { res.status(404).json({ error: "אין סיסמה מוצפנת זמינה." }); return; } res.json({ password: decryptSecret(secret) }); });
+    app.post("/api/admin/users/:id/revoke-sessions", requireAdmin(pool), async (req, res) => { await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [req.params.id]); res.json({ success: true }); });
+    app.delete("/api/admin/users/:id", requireAdmin(pool), async (req, res) => { await pool.query("UPDATE user_accounts SET status = 'deleted', updated_at = now() WHERE id = $1", [req.params.id]); await pool.query("UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL", [req.params.id]); res.status(204).end(); });
+    const requireSearchAuthorization = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const hasAccountCookie = String(req.headers.cookie ?? "").includes("__Host-maagarim_user=");
+      return (hasAccountCookie ? requireUserSearch(pool, true) : requireAccess(pool))(req, res, next);
+    };
+    app.get("/api/protected-range", requireSearchAuthorization, async (req, res) => {
       let target: URL;
       try { target = new URL(String(req.query.url ?? "")); } catch { res.status(400).json({ error: "כתובת נתונים לא תקינה." }); return; }
       if (target.protocol !== "https:" || !["media.githubusercontent.com", "raw.githubusercontent.com"].includes(target.hostname)) { res.status(403).json({ error: "מקור נתונים לא מורשה." }); return; }

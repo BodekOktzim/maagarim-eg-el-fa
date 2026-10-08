@@ -97,6 +97,12 @@ export default function GitHubPagesHome() {
   const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const unlocked = sessionStartedAt !== null;
+  const [accountAuthenticated, setAccountAuthenticated] = useState(false);
+  const [accountMode, setAccountMode] = useState<"login" | "register">("login");
+  const [accountUsername, setAccountUsername] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [accountError, setAccountError] = useState("");
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
@@ -161,7 +167,7 @@ export default function GitHubPagesHome() {
   }, [turnstileSiteKey]);
 
   useEffect(() => {
-    if (unlocked || !turnstileSiteKey || !captchaContainerRef.current) return;
+    if (accountAuthenticated || !turnstileSiteKey || !captchaContainerRef.current) return;
     let disposed = false;
     let timer: number | undefined;
     const render = () => {
@@ -186,15 +192,17 @@ export default function GitHubPagesHome() {
     timer = window.setInterval(() => { if (render() && timer) window.clearInterval(timer); }, 250);
     render();
     return () => { disposed = true; if (timer) window.clearInterval(timer); captchaWidgetIdRef.current = null; };
-  }, [unlocked, turnstileSiteKey]);
+  }, [accountAuthenticated, turnstileSiteKey]);
 
   useEffect(() => {
-    void fetch(`${API_BASE}/api/access/me`, { credentials: "include" }).then(async (response) => {
+    void fetch(`${API_BASE}/api/account/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
-      const payload = await response.json() as { authenticated?: boolean; expiresAt?: string | null };
+      const payload = await response.json() as { authenticated?: boolean; session?: { expiresAt?: string | null }; access?: { active?: boolean } | null };
       if (payload.authenticated) {
+        setAccountAuthenticated(true);
+        if (!payload.access?.active) return;
         setSessionStartedAt(Date.now());
-        setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+        setSessionExpiresAt(payload.session?.expiresAt ? Date.parse(payload.session.expiresAt) : null);
       }
     }).catch(() => undefined);
   }, []);
@@ -248,23 +256,29 @@ export default function GitHubPagesHome() {
   };
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setPasswordError("");
-    if (!password) { setPasswordError("יש להזין סיסמה."); return; }
+    setPasswordError(""); setAccountError("");
+    if (!accountUsername.trim() || !password) { setPasswordError("יש להזין שם משתמש וסיסמה."); return; }
     if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
-      const response = await fetch(`${API_BASE}/api/access/login`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ password, captchaToken }) });
+      const endpoint = accountMode === "register" ? "/api/account/register" : "/api/account/login";
+      const body = accountMode === "register" ? { username: accountUsername, password, turnstileToken: captchaToken } : { username: accountUsername, password, rememberMe, turnstileToken: captchaToken };
+      const response = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
         setCaptchaToken("");
         throw new Error(payload.error || "הכניסה נכשלה.");
       }
-      const startedAt = Date.now();
-      setPassword(""); setCaptchaToken(""); setSessionStartedAt(startedAt); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
+      setPassword(""); setCaptchaToken("");
+      if (accountMode === "register") { setAccountMode("login"); setPasswordError("ההרשמה הצליחה. התחבר כדי להמשיך."); return; }
+      setAccountAuthenticated(true); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
     } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
   };
 
+  const activateCode = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setAccountError(""); try { const response = await fetch(`${API_BASE}/api/account/activate-code`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: accessCode }) }); const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error || "הפעלת הקוד נכשלה."); setAccessCode(""); setSessionStartedAt(Date.now()); } catch (error) { setAccountError(error instanceof Error ? error.message : "הפעלת הקוד נכשלה."); } };
+
   const lock = () => {
-    void fetch(`${API_BASE}/api/access/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);
+    void fetch(`${API_BASE}/api/account/logout`, { method: "POST", credentials: "include" }).catch(() => undefined);
+    setAccountAuthenticated(false);
     setSessionStartedAt(null);
     setSessionExpiresAt(null);
     setResults([]);
@@ -468,7 +482,7 @@ export default function GitHubPagesHome() {
     finally { setFamilyDurationMs(performance.now() - startedAt); setIsLoadingFamily(false); }
   };
 
-  if (!unlocked) {
+  if (!accountAuthenticated) {
     return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100">
       <main className="w-full max-w-xl space-y-5">
           <div className="fixed left-4 top-4 z-40"><PwaControls/></div>
@@ -477,8 +491,12 @@ export default function GitHubPagesHome() {
           <h1 className="mt-5 text-center"><span className="bg-gradient-to-r from-fuchsia-200 via-white to-violet-200 bg-clip-text font-serif text-3xl font-bold tracking-[0.12em] text-transparent sm:text-4xl">OSINT Search</span></h1>
           <div className="mt-5 rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3 text-right text-xs leading-5 text-amber-100" role="note"><Info size={15} className="ml-1 inline align-text-bottom"/> אזהרה: מקור הנתונים ציבורי. ההתחברות מגינה על ממשק האתר בלבד; קובצי GitHub/LFS עשויים להיות ניתנים להורדה ישירה.</div>
           <form onSubmit={unlock} className="mt-7 space-y-3">
+            <label htmlFor="account-username" className="sr-only">שם משתמש</label>
+            <input id="account-username" autoComplete="username" value={accountUsername} onChange={(event) => setAccountUsername(event.target.value)} placeholder="שם משתמש" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
-            <input id="site-password" autoFocus type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            <input id="site-password" autoFocus type="password" autoComplete={accountMode === "register" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
+            {accountMode === "register" && <p className="rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3 text-xs leading-5 text-amber-100">חשוב: זכור את שם המשתמש והסיסמה שלך. אין אפשרות לשחזר סיסמה שנשכחה.</p>}
+            {accountMode === "login" && <label className="flex items-center gap-2 text-sm text-white/75"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)}/>זכור אותי במכשיר זה (עד 90 יום)</label>}
             <div className="rounded-xl border border-white/10 bg-black/15 p-3">
               <p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p>
               <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />
@@ -486,12 +504,15 @@ export default function GitHubPagesHome() {
               {captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}
             </div>
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
-            <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>כניסה</button>
+            <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>{accountMode === "register" ? "הרשמה" : "כניסה"}</button>
+            <button type="button" onClick={() => { setAccountMode(accountMode === "login" ? "register" : "login"); setPasswordError(""); }} className="w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">{accountMode === "login" ? "יצירת חשבון חדש" : "כבר יש לי חשבון — כניסה"}</button>
           </form>
         </div>
       </main>
     </div>;
   }
+
+  if (!unlocked) return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100"><main className="w-full max-w-xl rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9"><h1 className="text-2xl font-bold">נדרשת הרשאת גישה</h1><p className="mt-3 text-sm leading-6 text-white/70">החשבון שלך מחובר, אך אין לך כרגע קוד גישה פעיל.</p><form onSubmit={activateCode} className="mt-6 space-y-3"><input autoFocus value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="קוד גישה" className="h-14 w-full rounded-xl bg-white px-4 text-slate-900"/>{accountError && <p role="alert" className="text-sm text-rose-200">{accountError}</p>}<button className="h-12 w-full rounded-xl bg-[#f2a9d2] font-semibold text-[#30123e]">הפעל קוד</button></form><button type="button" onClick={lock} className="mt-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">יציאה</button></main></div>;
 
   return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
