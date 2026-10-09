@@ -185,6 +185,7 @@ export default function PwaControls() {
       }
       if (message.type === "OSINT_UPDATE_READY") {
         setStatusMessage("הקבצים החדשים מוכנים. האפליקציה נפתחת כעת בגרסה שאישרת.");
+        window.setTimeout(() => window.location.reload(), 1200);
       }
     };
     const onControllerChange = () => window.location.reload();
