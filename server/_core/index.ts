@@ -17,7 +17,7 @@ import { enqueueImport, importJobStatus } from "../../workers/queues";
 import { requireUploadAccessCode } from "../upload-access";
 import { searchPublicPhone } from "../web-phone-search";
 import { accessStats, bootstrapAdmin, createAccessCode, decryptSecret, getAccessSession, hashSecret, loginAdmin, loginWithAccessCode, logoutAccess, logoutAdmin, listAccessCodes, migrateAccessControl, requireAccess, requireAdmin, revokeAccessCode, deleteAccessCode, revealAccessCode, resetAccessStats } from "../access-auth";
-import { activateAccessCode, consumeSearch, getUserAccess, loginUser, logoutUser, registerUser, listUsers, setUserStatus, revokeUserSessions, resetUserPassword, revealUserPassword } from "../user-auth";
+import { activateAccessCode, consumeSearch, getUserAccess, loginUser, logoutUser, registerUser, listUsers, setUserStatus, deleteUser, revokeUserSessions, resetUserPassword, revealUserPassword } from "../user-auth";
 import { requireUserSearch } from "../linked-account-auth";
 import { isLinkedAdmin } from "../access-auth";
 
@@ -93,6 +93,7 @@ async function startServer() {
     app.get("/api/admin/users", requireAdmin(pool), async (_req, res) => { res.json({ items: await listUsers(pool) }); });
     app.post("/api/admin/users/:id/sessions/revoke", requireAdmin(pool), async (req, res) => { await revokeUserSessions(pool, req.params.id); res.json({ success: true }); });
     app.post("/api/admin/users/:id/status", requireAdmin(pool), async (req, res) => { try { const status = String(req.body?.status ?? ""); if (!["active", "blocked", "deleted"].includes(status)) throw new Error("סטטוס לא תקין."); await setUserStatus(pool, req.params.id, status as "active" | "blocked" | "deleted"); res.json({ success: true }); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "עדכון המשתמש נכשל." }); } });
+    app.delete("/api/admin/users/:id/delete", requireAdmin(pool), async (req, res) => { try { await deleteUser(pool, req.params.id); res.status(204).end(); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "מחיקת המשתמש נכשלה." }); } });
     app.post("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { await resetUserPassword(pool, req.params.id, String(req.body?.password ?? "")); res.json({ success: true }); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "איפוס הסיסמה נכשל." }); } });
     app.get("/api/admin/users/:id/password", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealUserPassword(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
     app.get("/api/admin/access-codes/:id/secret", requireAdmin(pool), async (req, res) => { try { res.json({ password: await revealAccessCode(pool, req.params.id) }); } catch (error) { res.status(404).json({ error: error instanceof Error ? error.message : "הסיסמה אינה זמינה." }); } });
