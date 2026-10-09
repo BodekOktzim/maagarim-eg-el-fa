@@ -181,7 +181,10 @@ async function startServer() {
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    if (persisted) app.use(["/index-seek", "/search-index-full", "/datasets"], requireAccess(persisted.pool));
+    if (persisted) app.use(["/index-seek", "/search-index-full", "/datasets"], (req, res, next) => {
+      const hasAccountCookie = String(req.headers.cookie ?? "").includes("__Host-maagarim_user=");
+      return (hasAccountCookie ? requireUserSearch(persisted.pool, false) : requireAccess(persisted.pool))(req, res, next);
+    });
     serveStatic(app);
   }
 
