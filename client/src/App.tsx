@@ -30,8 +30,15 @@ function App() {
   if (isAdminRoute) {
     return <ErrorBoundary><Admin /></ErrorBoundary>;
   }
-  if (__GITHUB_PAGES_DEMO__) {
+  if (!__GITHUB_PAGES_DEMO__ && (window.location.pathname === "/search" || window.location.pathname === "/search/")) {
     return <ErrorBoundary><GitHubPagesHome /></ErrorBoundary>;
+  }
+  if (__GITHUB_PAGES_DEMO__) {
+    if (window.location.pathname !== "/maagarim-eg-el-fa/" && window.location.pathname !== "/maagarim-eg-el-fa") {
+      return <ErrorBoundary><GitHubPagesHome /></ErrorBoundary>;
+    }
+    window.location.replace("https://maagarim-web-search-api.onrender.com/search");
+    return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] text-white">מעביר לחיפוש המאובטח…</div>;
   }
 
   return (
