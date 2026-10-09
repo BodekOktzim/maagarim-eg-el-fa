@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "VITE_BUILD_ID=\"${VITE_BUILD_ID:-$(git rev-parse HEAD)}\" vite build && node scripts/build-pwa-assets.mjs dist/public \"${VITE_BUILD_ID:-$(git rev-parse HEAD)}\" \"/\" && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js && esbuild server/worker.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/worker.js",
+    "build": "BUILD_ID=\"${VITE_BUILD_ID:-${RENDER_GIT_COMMIT:-${GITHUB_SHA:-$(git rev-parse HEAD 2>/dev/null || date +%s)}}}\" && VITE_BUILD_ID=\"$BUILD_ID\" vite build && node scripts/build-pwa-assets.mjs dist/public \"$BUILD_ID\" \"/\" && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/index.js && esbuild server/worker.ts --platform=node --packages=external --bundle --format=esm --outfile=dist/worker.js",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
