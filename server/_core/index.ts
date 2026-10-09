@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
@@ -58,7 +60,7 @@ async function startServer() {
   });
   const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
   const persisted = accessPool ? new accessPool() : null;
-  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); const userMigration = await (await import("node:fs/promises")).readFile(new URL("../../migrations/003_user_accounts.sql", import.meta.url), "utf8"); await persisted.pool.query(userMigration); }
+  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); const userMigration = await readFile(resolve(process.cwd(), "migrations/003_user_accounts.sql"), "utf8"); await persisted.pool.query(userMigration); }
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   if (persisted) {
     const pool = persisted.pool;
