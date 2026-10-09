@@ -155,5 +155,20 @@ export async function revealAccessCode(pool: Pool, id: string) { const result = 
 export async function revokeAccessCode(pool: Pool, id: string, disconnect: boolean) { await pool.query("UPDATE access_codes SET status = 'revoked', revoked_at = now(), updated_at = now() WHERE id = $1 AND deleted_at IS NULL", [id]); if (disconnect) await pool.query("UPDATE access_sessions SET revoked_at = now() WHERE access_code_id = $1 AND revoked_at IS NULL", [id]); }
 export async function deleteAccessCode(pool: Pool, id: string) { await pool.query("UPDATE access_codes SET status = 'deleted', deleted_at = now(), updated_at = now() WHERE id = $1", [id]); }
 export async function accessStats(pool: Pool) { const result = await pool.query("SELECT count(*) FILTER (WHERE status='active' AND deleted_at IS NULL)::int AS active_codes, count(*) FILTER (WHERE status='revoked')::int AS revoked_codes, count(*) FILTER (WHERE status='deleted')::int AS deleted_codes FROM access_codes"); const sessions = await pool.query("SELECT count(*)::int AS active_sessions FROM access_sessions WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())"); const events = await pool.query("SELECT count(*) FILTER (WHERE event_type='login_success')::int AS total_logins, count(*) FILTER (WHERE event_type='login_success' AND created_at >= current_date)::int AS today_logins, count(*) FILTER (WHERE event_type='login_failed')::int AS failed_logins FROM login_events"); return { ...result.rows[0], ...sessions.rows[0], ...events.rows[0] }; }
-export async function resetAccessStats(pool: Pool) { await pool.query("TRUNCATE TABLE login_events RESTART IDENTITY"); return { success: true }; }
+export async function resetAccessStats(pool: Pool, adminId: string) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const sessions = await client.query("UPDATE access_sessions SET revoked_at = now() WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) RETURNING id");
+    await client.query("TRUNCATE TABLE login_events RESTART IDENTITY");
+    await client.query("INSERT INTO admin_audit_logs(admin_id, action, target_type, metadata) VALUES($1, 'access_stats_reset', 'statistics', $2)", [adminId, { revokedSessions: sessions.rowCount ?? 0 }]);
+    await client.query("COMMIT");
+    return { success: true, revokedSessions: sessions.rowCount ?? 0 };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 export { ACCESS_COOKIE, ADMIN_COOKIE };

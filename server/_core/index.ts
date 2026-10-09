@@ -86,7 +86,7 @@ async function startServer() {
     app.post("/api/admin/login", async (req, res) => { try { res.json(await loginAdmin(pool, req, res, { email: String(req.body?.email ?? ""), password: String(req.body?.password ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "התחברות מנהל נכשלה." }); } });
     app.post("/api/admin/logout", async (req, res) => { await logoutAdmin(pool, req, res); res.json({ success: true }); });
     app.get("/api/admin/stats", requireAdmin(pool), async (_req, res) => { res.json(await accessStats(pool)); });
-    app.post("/api/admin/stats/reset", requireAdmin(pool), async (_req, res) => { res.json(await resetAccessStats(pool)); });
+    app.post("/api/admin/stats/reset", requireAdmin(pool), async (req, res) => { const adminId = (req as typeof req & { admin: { id: string } }).admin.id; res.json(await resetAccessStats(pool, adminId)); });
     app.get("/api/admin/access-codes", requireAdmin(pool), async (_req, res) => { res.json({ items: await listAccessCodes(pool) }); });
     app.get("/api/admin/users", requireAdmin(pool), async (_req, res) => { res.json({ items: await listUsers(pool) }); });
     app.post("/api/admin/users/:id/sessions/revoke", requireAdmin(pool), async (req, res) => { await revokeUserSessions(pool, req.params.id); res.json({ success: true }); });
