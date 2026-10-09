@@ -126,9 +126,11 @@ async function startServer() {
     res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-      if (req.method === "OPTIONS") { res.status(204).end(); return; }
+    if (req.method === "OPTIONS") { res.status(204).end(); return; }
     next();
   });
+  if (persisted) app.use("/api/web-phone-search", requireUserSearch(persisted.pool, true));
+  else app.use("/api/web-phone-search", (_req, res) => res.status(503).json({ error: "מערכת ההרשאות אינה מחוברת למסד נתונים." }));
   app.post("/api/web-phone-search", async (req, res) => {
     try {
       const phone = typeof req.body?.phone === "string" ? req.body.phone : "";
