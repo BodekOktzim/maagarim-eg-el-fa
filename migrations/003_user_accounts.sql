@@ -39,6 +39,7 @@ ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS validity_start_at TIMESTAMPTZ;
 ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS max_searches BIGINT;
 ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS search_count BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS search_count BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE user_accounts ADD COLUMN IF NOT EXISTS password_ciphertext TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_status ON user_accounts(status);
