@@ -259,24 +259,40 @@ export default function GitHubPagesHome() {
       setExportingFamilyId(null);
     }
   };
+  const resetCaptcha = () => {
+    setCaptchaToken("");
+    setCaptchaError("");
+    try {
+      const turnstile = (window as Window & { turnstile?: { reset: (widgetId?: string | number) => void } }).turnstile;
+      const widgetId = captchaWidgetIdRef.current;
+      if (turnstile && widgetId !== null) turnstile.reset(widgetId);
+    } catch {
+      setCaptchaError("לא ניתן לאפס את האימות. נסה לרענן את הדף.");
+    }
+  };
+
   const unlock = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordError(""); setAccountError("");
     if (!accountUsername.trim() || !password) { setPasswordError("יש להזין שם משתמש וסיסמה."); return; }
-    if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
+    if (!captchaToken) { resetCaptcha(); setPasswordError("האימות אינו תקף או שפג תוקפו. יש להשלים אותו מחדש."); return; }
+    let captchaReset = false;
     try {
       const endpoint = accountMode === "register" ? "/api/account/register" : "/api/account/login";
       const body = accountMode === "register" ? { username: accountUsername, password, captchaToken } : { username: accountUsername, password, rememberMe, captchaToken };
       const response = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
+      resetCaptcha(); captchaReset = true;
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
-        setCaptchaToken("");
         throw new Error(payload.error || "הכניסה נכשלה.");
       }
-      setPassword(""); setCaptchaToken("");
+      setPassword("");
       if (accountMode === "register") { setAccountMode("login"); setPasswordError("ההרשמה הצליחה. התחבר כדי להמשיך."); return; }
       setAccountAuthenticated(true); setAccountUser({ username: accountUsername, isAdmin: Boolean((payload as { isAdmin?: boolean }).isAdmin) }); setSessionStartedAt(null); setSessionExpiresAt(payload.expiresAt ? Date.parse(payload.expiresAt) : null);
-    } catch (error) { setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה."); }
+    } catch (error) {
+      if (!captchaReset) resetCaptcha();
+      setPasswordError(error instanceof Error ? error.message : "הכניסה נכשלה.");
+    }
   };
 
   const activateCode = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setAccountError(""); try { const response = await fetch(`${API_BASE}/api/account/access-code`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ code: accessCode }) }); const payload = await response.json() as { error?: string }; if (!response.ok) throw new Error(payload.error || "הפעלת הקוד נכשלה."); setAccessCode(""); setSessionStartedAt(Date.now()); } catch (error) { setAccountError(error instanceof Error ? error.message : "הפעלת הקוד נכשלה."); } };
