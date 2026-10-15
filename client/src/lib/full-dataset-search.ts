@@ -2,8 +2,9 @@ import { readOfflineFile, readOfflineUrlRange } from "./offline-data";
 
 const RECORD_BYTES = 16;
 const MEDIA_ROOT = "https://media.githubusercontent.com/media/BodekOktzim/maagarim-eg-el-fa/main";
-const INDEX_ROOT = MEDIA_ROOT;
+// Search sidecar indexes are public and raw.githubusercontent.com supports byte ranges reliably.
 const RAW_INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-eg-el-fa/main";
+const INDEX_ROOT = RAW_INDEX_ROOT;
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 const PROTECTED_API_ROOT = import.meta.env.MODE === "test" ? null : (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
@@ -311,20 +312,20 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
   const cached = byteRangeCache.get(cacheKey);
   if (cached) return cached;
   const pending = (async () => {
-    const request = (target: string) => fetchWithRetry(target, {
-      headers: { Range: `bytes=${start}-${endInclusive}` },
+    const request = (target: string, includeRangeHeader = true, includeCredentials = false) => fetchWithRetry(target, {
+      ...(includeRangeHeader ? { headers: { Range: `bytes=${start}-${endInclusive}` } } : {}),
       cache: "force-cache",
-      credentials: "include",
+      ...(includeCredentials ? { credentials: "include" as const } : {}),
     }, label);
-    const shouldProxy = Boolean(PROTECTED_API_ROOT) && (url.startsWith(`${MEDIA_ROOT}/`) || url.startsWith(`${INDEX_ROOT}/`));
+    const shouldProxy = Boolean(PROTECTED_API_ROOT) && url.startsWith(`${MEDIA_ROOT}/`);
     const proxyUrl = shouldProxy ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(url)}&start=${start}&end=${endInclusive}` : url;
-    let response = await request(proxyUrl);
+    let response = await request(proxyUrl, !shouldProxy, shouldProxy);
     if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`)) {
       const fallbackUrl = `${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`;
       const fallbackTarget = PROTECTED_API_ROOT
         ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(fallbackUrl)}&start=${start}&end=${endInclusive}`
         : fallbackUrl;
-      response = await request(fallbackTarget);
+      response = await request(fallbackTarget, !PROTECTED_API_ROOT, Boolean(PROTECTED_API_ROOT));
     }
     if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
     return response.arrayBuffer();
