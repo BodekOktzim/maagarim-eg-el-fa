@@ -318,8 +318,8 @@ export default function PwaControls() {
   return <>
     <div className="flex items-center gap-2">
       <button type="button" onClick={openOfflineDialog} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200/25 bg-emerald-200/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-200/20"><HardDriveDownload size={15}/><span>נתוני אופליין</span></button>
-      {!isInstalled && <button type="button" disabled={!latestRelease} onClick={() => { setStatusMessage(""); setInstallDialogOpen(true); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-200/10 px-3 py-2 text-xs font-medium text-fuchsia-100 transition hover:bg-fuchsia-200/20 disabled:cursor-wait disabled:opacity-50">
-        <Smartphone size={15}/><span>{latestRelease ? "התקנה" : "בודק גודל…"}</span>
+      {!isInstalled && <button type="button" onClick={() => { setStatusMessage(""); setInstallDialogOpen(true); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-fuchsia-200/25 bg-fuchsia-200/10 px-3 py-2 text-xs font-medium text-fuchsia-100 transition hover:bg-fuchsia-200/20">
+        <Smartphone size={15}/><span>הורדה כאפליקציה</span>
       </button>}
       {updateAvailable && <button type="button" onClick={() => setUpdateDialogOpen(true)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-200/30 bg-amber-200/10 px-3 py-2 text-xs font-medium text-amber-100 transition hover:bg-amber-200/20">
         <Download size={15}/><span>עדכון זמין</span>
