@@ -119,6 +119,7 @@
   .search-hero { background-image: radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.18), transparent 30%), radial-gradient(circle at 10% 100%, rgba(34, 211, 238, 0.13), transparent 32%); }
   .family-pair-detail-grid { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; width: max-content; }
   .family-detail-panel { width: min(260px, 70vw); }
+  .force-desktop-view { min-width: 1100px; }
 }
 
 @media (max-width: 899px) {

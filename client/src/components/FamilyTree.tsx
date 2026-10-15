@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { GitBranch, Info, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
+import { Download, GitBranch, Info, ShieldCheck, UserRound, UsersRound, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type TreePerson = {
@@ -52,6 +52,35 @@ type FamilyTreeProps = {
 type DetailPlacement = "below" | "left" | "right";
 
 const unique = (values: string[]) => Array.from(new Set(values));
+const svgEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" };
+const escapeSvg = (value: string) => value.replace(/[&<>"']/g, (character) => svgEntities[character] ?? character);
+function downloadFamilyTreeImage(data: FamilyTreeData, centralId: string) {
+  const people = unique([centralId, ...data.people.map((person) => person.id)]).map((id) => data.people.find((person) => person.id === id)).filter((person): person is TreePerson => Boolean(person));
+  const cardWidth = 250;
+  const cardHeight = 116;
+  const gapX = 24;
+  const gapY = 34;
+  const columns = 4;
+  const padding = 44;
+  const rows = Math.max(1, Math.ceil(people.length / columns));
+  const width = padding * 2 + columns * cardWidth + (columns - 1) * gapX;
+  const height = padding * 2 + rows * cardHeight + (rows - 1) * gapY + 50;
+  const positions = new Map(people.map((person, index) => [person.id, { x: padding + (index % columns) * (cardWidth + gapX), y: padding + Math.floor(index / columns) * (cardHeight + gapY) }]));
+  const lines = data.relationships.flatMap((relationship) => {
+    const from = positions.get(relationship.personAId); const to = positions.get(relationship.personBId);
+    if (!from || !to) return [];
+    return [`<line x1="${from.x + cardWidth / 2}" y1="${from.y + cardHeight / 2}" x2="${to.x + cardWidth / 2}" y2="${to.y + cardHeight / 2}" stroke="#d96b9b" stroke-opacity=".55" stroke-width="2"/>`];
+  }).join("");
+  const cards = people.map((person) => {
+    const position = positions.get(person.id)!; const central = person.id === centralId;
+    const relation = central ? "האדם המרכזי" : data.relationships.find((item) => item.personAId === centralId && item.personBId === person.id)?.type === "PARENT" ? "הורה" : data.relationships.find((item) => item.personBId === centralId && item.personAId === person.id)?.type === "CHILD" ? "ילד/ה" : "קשר משפחתי";
+    return `<g><rect x="${position.x}" y="${position.y}" width="${cardWidth}" height="${cardHeight}" rx="18" fill="${central ? "#5b1f43" : "#281420"}" stroke="${central ? "#ff5b9b" : "#b84f80"}" stroke-width="${central ? 3 : 1.5}"/><text x="${position.x + cardWidth - 16}" y="${position.y + 25}" text-anchor="end" fill="#ffb6d3" font-size="13" font-family="Arial, sans-serif">${escapeSvg(relation)}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 53}" text-anchor="end" fill="#ffffff" font-size="17" font-weight="700" font-family="Arial, sans-serif">${escapeSvg(person.fullName || "ללא שם")}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 80}" text-anchor="end" fill="#f4c5d8" font-size="12" font-family="Arial, sans-serif">ת״ז: ${escapeSvg(person.nationalId ?? "לא נמצא")}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 101}" text-anchor="end" fill="#d4a9bb" font-size="11" font-family="Arial, sans-serif">${escapeSvg(person.sourceNames?.join(" · ") || "מקור לא נמצא")}</text></g>`;
+  }).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#150d14"/><text x="${width - padding}" y="${height - 18}" text-anchor="end" fill="#ffb6d3" font-size="16" font-family="Arial, sans-serif">מפת קשרים משפחתיים · ${escapeSvg(people.find((person) => person.id === centralId)?.fullName ?? centralId)}</text>${lines}${cards}</svg>`;
+  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  const link = document.createElement("a"); link.href = url; link.download = `family-tree-${centralId}.svg`; link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function PersonCard({
   person,
@@ -268,7 +297,7 @@ export default function FamilyTree({ data, centralId, onSelect }: FamilyTreeProp
     <section className="family-tree-shell overflow-hidden rounded-[28px] border border-[#f06298]/20 bg-[#150d14] text-white shadow-[0_24px_80px_rgba(21,13,20,0.4)]">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-7">
         <div><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#ff9fc1]"><GitBranch size={14}/> מפת קשרים משפחתיים</div><p className="mt-1 text-sm text-white/55">לחצו על כרטיס לפרטים; בכרטיס הפרטים אפשר לבחור למרכז את העץ באדם הזה.</p></div>
-        <Badge className="border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10"><ShieldCheck size={13} className="ml-1"/> VERIFIED / SOURCE-BACKED</Badge>
+        <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => downloadFamilyTreeImage(data, centralId)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/20"><Download size={14}/>הורד עץ כתמונה</button><Badge className="border border-emerald-300/20 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/10"><ShieldCheck size={13} className="ml-1"/> VERIFIED / SOURCE-BACKED</Badge></div>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b border-[#f06298]/10 bg-[#23121d]/70 px-4 py-3 text-center text-xs leading-relaxed text-[#f3bfd1]/80 min-[900px]:hidden">
         <span>בטלפון העץ מוצג בעמודה. אפשר לבחור „אתר למחשב” בדפדפן כדי לראות פריסה רחבה יותר.</span>

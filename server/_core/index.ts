@@ -67,7 +67,7 @@ async function startServer() {
       if (allowedOrigin && req.headers.origin === allowedOrigin) {
         res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
         res.setHeader("Access-Control-Allow-Credentials", "true");
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Admin-Bootstrap-Secret");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, X-Admin-Bootstrap-Secret");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       }
       if (req.method === "OPTIONS") { res.status(204).end(); return; }
@@ -76,7 +76,7 @@ async function startServer() {
     app.post("/api/account/register", async (req, res) => { try { res.status(201).json(await registerUser(pool, req, res, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "ההרשמה נכשלה." }); } });
     app.post("/api/account/login", async (req, res) => { try { res.json(await loginUser(pool, req, res, { username: String(req.body?.username ?? ""), password: String(req.body?.password ?? ""), rememberMe: Boolean(req.body?.rememberMe), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "ההתחברות נכשלה." }); } });
     app.post("/api/account/logout", async (req, res) => { await logoutUser(pool, req, res); res.json({ success: true }); });
-    app.get("/api/account/me", async (req, res) => { const state = await getUserAccess(pool, req); res.json({ authenticated: Boolean(state.session), user: state.session ? { id: state.session.user_id, username: state.session.username, isAdmin: await isLinkedAdmin(pool, state.session.user_id) } : null, access: state.access ? { label: state.access.label, expiresAt: state.access.expires_at } : null }); });
+    app.get("/api/account/me", async (req, res) => { const state = await getUserAccess(pool, req); res.json({ authenticated: Boolean(state.session), user: state.session ? { id: state.session.user_id, username: state.session.username, isAdmin: await isLinkedAdmin(pool, state.session.user_id) } : null, access: state.access ? { label: state.access.label, expiresAt: state.access.expires_at, maxSearches: state.access.max_searches == null ? null : Number(state.access.max_searches), searchCount: Number(state.access.search_count ?? 0) } : null }); });
     app.post("/api/account/access-code", async (req, res) => { try { res.json(await activateAccessCode(pool, req, res, { code: String(req.body?.code ?? "") })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הפעלת הקוד נכשלה." }); } });
     app.post("/api/account/consume-search", async (req, res) => { try { res.json(await consumeSearch(pool, req)); } catch (error) { res.status(403).json({ error: error instanceof Error ? error.message : "אין הרשאת חיפוש." }); } });
     app.post("/api/access/login", async (req, res) => { try { res.json(await loginWithAccessCode(pool, req, res, { password: String(req.body?.password ?? ""), captchaToken: req.body?.captchaToken })); } catch (error) { res.status(401).json({ error: error instanceof Error ? error.message : "הכניסה נכשלה." }); } });

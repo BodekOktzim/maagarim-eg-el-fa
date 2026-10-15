@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Network, Search, UsersRound } from "lucide-react";
+import { CalendarDays, Download, Info, KeyRound, LoaderCircle, LockKeyhole, LogOut, MapPin, Monitor, Network, Search, UsersRound } from "lucide-react";
 import FamilyTree from "@/components/FamilyTree";
 import PwaControls from "@/components/PwaControls";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -153,6 +153,7 @@ export default function GitHubPagesHome() {
   const [isLoadingFamily, setIsLoadingFamily] = useState(false);
   const [familyError, setFamilyError] = useState("");
   const [familyDurationMs, setFamilyDurationMs] = useState<number | null>(null);
+  const [desktopView, setDesktopView] = useState(false);
   const activeSearchRef = useRef<{ description: string; search: () => Promise<SearchHit[]>; startedAt: number } | null>(null);
   const searchRunRef = useRef(0);
   const resumeInFlightRef = useRef(false);
@@ -199,12 +200,14 @@ export default function GitHubPagesHome() {
   useEffect(() => {
     void fetch(`${API_BASE}/api/account/me`, { credentials: "include" }).then(async (response) => {
       if (!response.ok) return;
-      const payload = await response.json() as { authenticated?: boolean; user?: { username: string; isAdmin?: boolean }; session?: { expiresAt?: string | null }; access?: { max_searches?: number | null; search_count?: number; expires_at?: string | null; expiresAt?: string | null } | null };
+      const payload = await response.json() as { authenticated?: boolean; user?: { username: string; isAdmin?: boolean }; session?: { expiresAt?: string | null }; access?: { maxSearches?: number | null; searchCount?: number; max_searches?: number | null; search_count?: number; expires_at?: string | null; expiresAt?: string | null } | null };
       if (payload.authenticated) {
         if (payload.user) setAccountUser(payload.user);
         setAccountAuthenticated(true);
         if (!payload.access) return;
-        setQuota({ remaining: payload.access.max_searches == null ? null : Math.max(0, Number(payload.access.max_searches) - Number(payload.access.search_count ?? 0)), maxSearches: payload.access.max_searches == null ? null : Number(payload.access.max_searches), expiresAt: payload.access.expiresAt ?? payload.access.expires_at ?? null });
+        const maxSearches = payload.access.maxSearches ?? payload.access.max_searches ?? null;
+        const searchCount = payload.access.searchCount ?? payload.access.search_count ?? 0;
+        setQuota({ remaining: maxSearches == null ? null : Math.max(0, Number(maxSearches) - Number(searchCount)), maxSearches: maxSearches == null ? null : Number(maxSearches), expiresAt: payload.access.expiresAt ?? payload.access.expires_at ?? null });
         setSessionStartedAt(Date.now());
         setSessionExpiresAt(payload.session?.expiresAt ? Date.parse(payload.session.expiresAt) : null);
       }
@@ -530,11 +533,11 @@ export default function GitHubPagesHome() {
   const quotaClock = quotaSecondsLeft == null ? "ללא תאריך סיום" : `${Math.floor(quotaSecondsLeft / 86400)} ימים ${String(Math.floor((quotaSecondsLeft % 86400) / 3600)).padStart(2, "0")}:${String(Math.floor((quotaSecondsLeft % 3600) / 60)).padStart(2, "0")}:${String(quotaSecondsLeft % 60).padStart(2, "0")}`;
   if (!unlocked) return <div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#100b17] px-4 py-10 text-slate-100"><main className="w-full max-w-xl rounded-[28px] border border-fuchsia-200/15 bg-[#20102b] p-6 shadow-[0_24px_80px_rgba(46,24,61,0.35)] sm:p-9"><h1 className="text-2xl font-bold">נדרשת הרשאת גישה</h1><p className="mt-3 text-sm leading-6 text-white/70">החשבון שלך מחובר, אך אין לך כרגע קוד גישה פעיל.</p><form onSubmit={activateCode} className="mt-6 space-y-3"><input autoFocus value={accessCode} onChange={(event) => setAccessCode(event.target.value)} placeholder="קוד גישה" className="h-14 w-full rounded-xl bg-white px-4 text-slate-900"/>{accountError && <p role="alert" className="text-sm text-rose-200">{accountError}</p>}<button className="h-12 w-full rounded-xl bg-[#f2a9d2] font-semibold text-[#30123e]">הפעל קוד</button></form><button type="button" onClick={lock} className="mt-3 w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">יציאה</button></main></div>;
 
-  return <div dir="rtl" className="min-h-screen bg-[#100b17] text-slate-100">
+  return <div dir="rtl" className={`min-h-screen bg-[#100b17] text-slate-100 ${desktopView ? "force-desktop-view" : ""}`}>
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}<button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
+        <div className="flex items-center gap-2"><PwaControls/><button type="button" aria-pressed={desktopView} onClick={() => setDesktopView((current) => !current)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${desktopView ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-100" : "border-white/15 text-white/70 hover:bg-white/10"}`}><Monitor size={15}/>{desktopView ? "תצוגת טלפון" : "תצוגת מחשב"}</button><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}<button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
       </div>
     </header>
 
