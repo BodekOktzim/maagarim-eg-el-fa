@@ -91,14 +91,13 @@ function TextMatchModeSelector({ mode, onChange }: { mode: TextMatchMode; onChan
 }
 
 export default function GitHubPagesHome() {
-  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(0);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
   const unlocked = sessionStartedAt !== null;
-  const [accountAuthenticated, setAccountAuthenticated] = useState(false);
+  const [accountAuthenticated, setAccountAuthenticated] = useState(true);
   const [accountMode, setAccountMode] = useState<"login" | "register">("login");
   const [accountUser, setAccountUser] = useState<{ username: string; isAdmin?: boolean }>({ username: "" });
   const [accountUsername, setAccountUsername] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accountError, setAccountError] = useState("");
   const [quota, setQuota] = useState<{ remaining: number | null; maxSearches: number | null; expiresAt: string | null }>({ remaining: null, maxSearches: null, expiresAt: null });
@@ -269,7 +268,7 @@ export default function GitHubPagesHome() {
     if (!captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
       const endpoint = accountMode === "register" ? "/api/account/register" : "/api/account/login";
-      const body = accountMode === "register" ? { username: accountUsername, password, captchaToken } : { username: accountUsername, password, rememberMe, captchaToken };
+      const body = accountMode === "register" ? { username: accountUsername, password, captchaToken } : { username: accountUsername, password, captchaToken };
       const response = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
@@ -324,14 +323,6 @@ export default function GitHubPagesHome() {
 
   const executeSearch = async (description: string, search: () => Promise<SearchHit[]>, force = false) => {
     if (isSearching && !force) return;
-    if (!force) {
-      try {
-        const response = await fetch(`${API_BASE}/api/account/consume-search`, { method: "POST", credentials: "include" });
-        const payload = await response.json() as { remaining?: number | null; maxSearches?: number | null; expiresAt?: string | null; error?: string };
-        if (!response.ok) throw new Error(payload.error || "אין הרשאת חיפוש פעילה.");
-        setQuota({ remaining: payload.remaining ?? null, maxSearches: payload.maxSearches ?? null, expiresAt: payload.expiresAt ?? null });
-      } catch (error) { rejectSearch(error instanceof Error ? error.message : "אין הרשאת חיפוש פעילה."); return; }
-    }
     const runId = ++searchRunRef.current;
     activeSearchRef.current = { description, search, startedAt: Date.now() };
     sessionStorage.setItem("maagarim-pending-search", JSON.stringify({ description, startedAt: Date.now() }));
@@ -513,7 +504,6 @@ export default function GitHubPagesHome() {
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete={accountMode === "register" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             {accountMode === "register" && <p className="rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3 text-xs leading-5 text-amber-100">חשוב: זכור את שם המשתמש והסיסמה שלך. אין אפשרות לשחזר סיסמה שנשכחה.</p>}
-            {accountMode === "login" && <label className="flex items-center gap-2 text-sm text-white/75"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)}/>זכור אותי במכשיר זה (עד 90 יום)</label>}
             <div className="rounded-xl border border-white/10 bg-black/15 p-3">
               <p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p>
               <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />
@@ -537,7 +527,7 @@ export default function GitHubPagesHome() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#100b17]/90 backdrop-blur-xl">
       <div className="mx-auto flex flex-wrap max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-7">
         <div className="flex items-center gap-3"><div className="rounded-2xl bg-fuchsia-300/15 p-2.5 text-fuchsia-200"><Network size={22}/></div><p className="bg-gradient-to-r from-fuchsia-200 to-violet-200 bg-clip-text font-serif text-lg font-bold tracking-[0.1em] text-transparent">OSINT Search</p></div>
-        <div className="flex items-center gap-2"><PwaControls/><button type="button" aria-pressed={desktopView} onClick={() => setDesktopView((current) => !current)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${desktopView ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-100" : "border-white/15 text-white/70 hover:bg-white/10"}`}><Monitor size={15}/>{desktopView ? "תצוגת טלפון" : "תצוגת מחשב"}</button><span className="hidden text-xs text-white/55 sm:inline">{accountUser.username}</span>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}<button type="button" onClick={lock} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"><LogOut size={15}/>יציאה</button></div>
+        <div className="flex items-center gap-2"><PwaControls/><button type="button" aria-pressed={desktopView} onClick={() => setDesktopView((current) => !current)} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${desktopView ? "border-cyan-200/50 bg-cyan-200/15 text-cyan-100" : "border-white/15 text-white/70 hover:bg-white/10"}`}><Monitor size={15}/>{desktopView ? "תצוגת טלפון" : "תצוגת מחשב"}</button>{accountUser.isAdmin && <a href={`${import.meta.env.BASE_URL}admin`} className="inline-flex items-center rounded-xl border border-fuchsia-200/20 px-3 py-2 text-xs text-fuchsia-100/80 hover:bg-fuchsia-200/10">פאנל מנהל</a>}</div>
       </div>
     </header>
 

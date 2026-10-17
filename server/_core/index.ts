@@ -98,10 +98,8 @@ async function startServer() {
     app.post("/api/admin/access-codes", requireAdmin(pool), async (req, res) => { try { res.status(201).json(await createAccessCode(pool, { password: req.body?.password, label: req.body?.label, validitySeconds: req.body?.validitySeconds == null || req.body.validitySeconds === "" ? null : Number(req.body.validitySeconds), expiresAt: req.body?.expiresAt || null, maxUsers: req.body?.maxUsers == null || req.body.maxUsers === "" ? null : Number(req.body.maxUsers), maxSearches: req.body?.maxSearches == null || req.body.maxSearches === "" ? null : Number(req.body.maxSearches) })); } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "יצירת סיסמה נכשלה." }); } });
     app.post("/api/admin/access-codes/:id/revoke", requireAdmin(pool), async (req, res) => { await revokeAccessCode(pool, req.params.id, Boolean(req.body?.disconnect)); res.json({ success: true }); });
     app.delete("/api/admin/access-codes/:id", requireAdmin(pool), async (req, res) => { await deleteAccessCode(pool, req.params.id); res.status(204).end(); });
-    const requireSearchAuthorization = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-      const hasAccountCookie = String(req.headers.cookie ?? "").includes("__Host-maagarim_user=");
-      return (hasAccountCookie ? requireUserSearch(pool, false) : requireAccess(pool))(req, res, next);
-    };
+    // Public search: regular visitors no longer need an account or access code.
+    const requireSearchAuthorization = (_req: express.Request, _res: express.Response, next: express.NextFunction) => next();
     app.get("/api/protected-range", requireSearchAuthorization, async (req, res) => {
       let target: URL;
       try { target = new URL(String(req.query.url ?? "")); } catch { res.status(400).json({ error: "כתובת נתונים לא תקינה." }); return; }
@@ -177,10 +175,7 @@ async function startServer() {
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
   } else {
-    if (persisted) app.use(["/index-seek", "/search-index-full", "/datasets"], (req, res, next) => {
-      const hasAccountCookie = String(req.headers.cookie ?? "").includes("__Host-maagarim_user=");
-      return (hasAccountCookie ? requireUserSearch(persisted.pool, false) : requireAccess(persisted.pool))(req, res, next);
-    });
+    if (persisted) app.use(["/index-seek", "/search-index-full", "/datasets"], (_req, _res, next) => next());
     serveStatic(app);
   }
 
