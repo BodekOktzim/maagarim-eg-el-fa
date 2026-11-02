@@ -107,9 +107,9 @@ export async function isLinkedAdmin(pool: Pool, userId: string) {
   return Boolean(result.rows[0]);
 }
 
-export async function loginWithAccessCode(pool: Pool, req: Request, res: Response, input: { password: string; captchaToken?: string }) {
+export async function loginWithAccessCode(pool: Pool, req: Request, res: Response, input: { password: string; captchaToken?: string; turnstileEnabled?: boolean }) {
   const ip = requestIp(req);
-  if (!(await verifyTurnstile(input.captchaToken, ip))) { await logEvent(pool, "login_failed", { ip, userAgent: userAgent(req), metadata: { reason: "captcha" } }); throw new Error("האימות האנושי נכשל."); }
+  if (input.turnstileEnabled !== false && !(await verifyTurnstile(input.captchaToken, ip))) { await logEvent(pool, "login_failed", { ip, userAgent: userAgent(req), metadata: { reason: "captcha" } }); throw new Error("האימות האנושי נכשל."); }
   const candidates = await pool.query<AccessRecord>("SELECT id, code_hash, label, validity_kind, validity_seconds, status FROM access_codes WHERE status = 'active' AND deleted_at IS NULL");
   let matched: AccessRecord | undefined;
   for (const candidate of candidates.rows) if (await verifySecret(input.password, candidate.code_hash)) { matched = candidate; break; }
