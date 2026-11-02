@@ -29,8 +29,8 @@ export async function getSiteSettings(pool: Pool): Promise<SiteSettings> {
   const accessMode: AccessMode = rawMode === "access_code" || rawMode === "account" ? rawMode : "public";
   return {
     accessMode,
-    turnstileEnabled: asBoolean(values.get("turnstile_enabled"), DEFAULTS.turnstileEnabled),
-    rememberLoginEnabled: asBoolean(values.get("remember_login_enabled"), DEFAULTS.rememberLoginEnabled),
+    turnstileEnabled: false,
+    rememberLoginEnabled: false,
     registrationEnabled: asBoolean(values.get("registration_enabled"), DEFAULTS.registrationEnabled),
   };
 }
@@ -48,8 +48,8 @@ export async function updateSiteSettings(pool: Pool, input: Partial<SiteSettings
   const current = await getSiteSettings(pool);
   const next: SiteSettings = {
     accessMode: input.accessMode === "public" || input.accessMode === "access_code" || input.accessMode === "account" ? input.accessMode : current.accessMode,
-    turnstileEnabled: typeof input.turnstileEnabled === "boolean" ? input.turnstileEnabled : current.turnstileEnabled,
-    rememberLoginEnabled: typeof input.rememberLoginEnabled === "boolean" ? input.rememberLoginEnabled : current.rememberLoginEnabled,
+    turnstileEnabled: false,
+    rememberLoginEnabled: false,
     registrationEnabled: typeof input.registrationEnabled === "boolean" ? input.registrationEnabled : current.registrationEnabled,
   };
   await pool.query(

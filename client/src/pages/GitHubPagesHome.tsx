@@ -107,7 +107,6 @@ export default function GitHubPagesHome() {
   const [quota, setQuota] = useState<{ remaining: number | null; maxSearches: number | null; expiresAt: string | null }>({ remaining: null, maxSearches: null, expiresAt: null });
   const [quotaNow, setQuotaNow] = useState(() => Date.now());
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState(TURNSTILE_SITE_KEY);
   const [captchaToken, setCaptchaToken] = useState("");
@@ -278,10 +277,9 @@ export default function GitHubPagesHome() {
     event.preventDefault();
     setPasswordError(""); setAccountError("");
     if (!accountUsername.trim() || !password) { setPasswordError("יש להזין שם משתמש וסיסמה."); return; }
-    if (turnstileEnabled && !captchaToken) { setPasswordError("יש להשלים את האימות האנושי לפני הכניסה."); return; }
     try {
       const endpoint = accountMode === "register" ? "/api/account/register" : "/api/account/login";
-      const body = accountMode === "register" ? { username: accountUsername, password, captchaToken } : { username: accountUsername, password, rememberMe, captchaToken };
+      const body = { username: accountUsername, password };
       const response = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       const payload = await response.json() as { expiresAt?: string | null; error?: string };
       if (!response.ok) {
@@ -516,14 +514,7 @@ export default function GitHubPagesHome() {
             <input id="account-username" autoComplete="username" value={accountUsername} onChange={(event) => setAccountUsername(event.target.value)} placeholder="שם משתמש" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
             <label htmlFor="site-password" className="sr-only">סיסמה</label>
             <input id="site-password" autoFocus type="password" autoComplete={accountMode === "register" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="סיסמה" className="h-14 w-full rounded-xl border-0 bg-white px-4 text-base text-slate-900 placeholder:text-slate-400"/>
-            {rememberLoginEnabled && accountMode === "login" && <label className="flex items-center gap-2 text-sm text-white/75"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /> זכור אותי במכשיר הזה</label>}
             {accountMode === "register" && <p className="rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3 text-xs leading-5 text-amber-100">חשוב: זכור את שם המשתמש והסיסמה שלך. אין אפשרות לשחזר סיסמה שנשכחה.</p>}
-            {turnstileEnabled && <div className="rounded-xl border border-white/10 bg-black/15 p-3">
-              <p className="mb-2 text-sm text-white/80">אימות אנושי — יש להשלים לפני הכניסה</p>
-              <div ref={captchaContainerRef} className="min-h-[65px]" aria-label="אימות אנושי" />
-              {!turnstileSiteKey && !captchaError && <p className="text-xs text-white/55">טוען את אפשרות האימות…</p>}
-              {captchaError && <p role="alert" className="text-xs text-rose-200">{captchaError}</p>}
-            </div>}
             {passwordError && <p role="alert" className="text-sm text-rose-200">{passwordError}</p>}
             <button type="submit" className="h-12 w-full rounded-xl bg-[#f2a9d2] px-5 font-semibold text-[#30123e] transition hover:bg-[#f7c2e0]"><KeyRound size={17} className="ml-2 inline"/>{accountMode === "register" ? "הרשמה" : "כניסה"}</button>
             {registrationEnabled && <button type="button" onClick={() => { setAccountMode(accountMode === "login" ? "register" : "login"); setPasswordError(""); }} className="w-full rounded-xl border border-white/15 px-4 py-3 text-sm text-white/75">{accountMode === "login" ? "יצירת חשבון חדש" : "כבר יש לי חשבון — כניסה"}</button>}
