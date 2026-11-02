@@ -72,7 +72,7 @@ async function startServer() {
   const accessPool = process.env.POSTGRES_URL || process.env.DATABASE_URL ? (await import("../postgres")).PostgresRepository : null;
   const persisted = accessPool ? new accessPool() : null;
   settingsPool = persisted?.pool ?? null;
-  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); const fs = await import("node:fs/promises"); for (const migration of ["003_user_accounts.sql", "004_site_settings.sql"]) { await persisted.pool.query(await fs.readFile(new URL(`../../migrations/${migration}`, import.meta.url), "utf8")); } }
+  if (persisted) { await persisted.migrate(); await migrateAccessControl(persisted.pool); const fs = await import("node:fs/promises"); for (const migration of ["003_user_accounts.sql", "004_site_settings.sql"]) { await persisted.pool.query(await fs.readFile(new URL(`../migrations/${migration}`, import.meta.url), "utf8")); } }
   app.use("/api", rateLimit({ windowMs: 60_000, max: 120, skip: (req) => req.path.startsWith("/uploads/") }));
   if (persisted) {
     const pool = persisted.pool;
