@@ -30,20 +30,20 @@ describe("user accounts", () => {
     }) } as unknown as Pool;
     const result = await registerUser(pool, request(), makeResponse().response as unknown as Response, { username: " דוד ", password: "correct-password" });
     expect(result).toEqual({ id: "user-1", username: "דוד" });
-    expect(String(inserted[0][1])).toMatch(/^scrypt\$/);
-    expect(inserted[0][1]).not.toBe("correct-password");
-    expect(String(inserted[0][2])).toMatch(/^v1\$/);
+    expect(String(inserted[0][2])).toMatch(/^scrypt\$/);
+    expect(inserted[0][2]).not.toBe("correct-password");
+    expect(String(inserted[0][3])).toMatch(/^v1\$/);
     vi.unstubAllEnvs();
   });
 
-  it("uses a longer cookie lifetime for Remember Me", async () => {
+  it("uses the short cookie lifetime because Remember Me is disabled", async () => {
     const passwordHash = await hashSecret("correct-password");
     const { response: responseObject, cookies } = makeResponse();
     const pool = { query: vi.fn(async (sql: string) => {
       if (sql.startsWith("SELECT id, username")) return { rows: [{ id: "user-1", username: "דוד", password_hash: passwordHash, password_ciphertext: null, status: "active" }] };
       return { rows: [] };
     }) } as unknown as Pool;
-    await loginUser(pool, request(), responseObject as unknown as Response, { username: "דוד", password: "correct-password", rememberMe: true });
-    expect(cookies[0]).toMatchObject({ httpOnly: true, secure: true, sameSite: "none", maxAge: 90 * 24 * 60 * 60 * 1000 });
+    await loginUser(pool, request(), responseObject as unknown as Response, { username: "דוד", password: "correct-password" });
+    expect(cookies[0]).toMatchObject({ httpOnly: true, secure: true, sameSite: "none", maxAge: 24 * 60 * 60 * 1000 });
   });
 });

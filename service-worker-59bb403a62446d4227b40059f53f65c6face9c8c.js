@@ -1,0 +1,66 @@
+/* OSINT Search release 59bb403a62446d4227b40059f53f65c6face9c8c; user-approved, version-pinned offline shell. */
+const BUILD_ID = "59bb403a62446d4227b40059f53f65c6face9c8c";
+const BASE_PATH = "/";
+const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
+const CACHE_PREFIX = "osint-search-shell-";
+const SHELL_RESOURCES = ["/assets/index-B2TGC7T3.css","/assets/index-CBgKe-sd.js","/assets/xlsx-DGuHH-KN.js","/index-seek/offline-data-manifest.json","/index.html","/manifest.webmanifest","/pwa-icon-192.png","/pwa-icon-512.png"];
+const INDEX_URL = BASE_PATH + "index.html";
+const VERSION_PATH = BASE_PATH + "pwa-version.json";
+
+async function notifyClients(message) {
+  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of clients) client.postMessage(message);
+}
+
+async function cacheShell() {
+  const cache = await caches.open(CACHE_NAME);
+  let completed = 0;
+  for (const url of SHELL_RESOURCES) {
+    const response = await fetch(url, { cache: "reload", credentials: "same-origin" });
+    if (!response.ok) throw new Error("HTTP " + response.status + " loading " + url);
+    await cache.put(url, response.clone());
+    completed += 1;
+    await notifyClients({ type: "OSINT_CACHE_PROGRESS", buildId: BUILD_ID, completed, total: SHELL_RESOURCES.length });
+  }
+}
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    await self.clients.claim();
+    await notifyClients({ type: "OSINT_SW_ACTIVE", buildId: BUILD_ID });
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key)));
+  })());
+});
+
+self.addEventListener("message", (event) => {
+  const type = event.data?.type;
+  if (type === "OSINT_CACHE_CURRENT") {
+    event.waitUntil(cacheShell().then(() => notifyClients({ type: "OSINT_CACHE_READY", buildId: BUILD_ID })).catch((error) => notifyClients({ type: "OSINT_CACHE_FAILED", buildId: BUILD_ID, message: String(error) })));
+  }
+  if (type === "OSINT_PREPARE_UPDATE") {
+    event.waitUntil(cacheShell().then(async () => {
+      await notifyClients({ type: "OSINT_UPDATE_READY", buildId: BUILD_ID });
+      await self.skipWaiting();
+    }).catch((error) => notifyClients({ type: "OSINT_UPDATE_FAILED", buildId: BUILD_ID, message: String(error) })));
+  }
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+  const requestUrl = new URL(request.url);
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname === VERSION_PATH) return;
+  const normalizedUrl = new URL(request.url);
+  normalizedUrl.search = "";
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    if (request.mode === "navigate") {
+      const shell = await cache.match(INDEX_URL);
+      if (shell) return shell;
+    }
+    const cached = await cache.match(normalizedUrl.href);
+    if (cached) return cached;
+    return fetch(request);
+  })());
+});

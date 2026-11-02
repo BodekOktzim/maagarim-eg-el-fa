@@ -4,14 +4,12 @@ export type AccessMode = "public" | "access_code" | "account";
 export type SiteSettings = {
   accessMode: AccessMode;
   turnstileEnabled: boolean;
-  rememberLoginEnabled: boolean;
   registrationEnabled: boolean;
 };
 
 const DEFAULTS: SiteSettings = {
   accessMode: "public",
   turnstileEnabled: false,
-  rememberLoginEnabled: false,
   registrationEnabled: false,
 };
 
@@ -30,8 +28,7 @@ export async function getSiteSettings(pool: Pool): Promise<SiteSettings> {
   return {
     accessMode,
     turnstileEnabled: false,
-    rememberLoginEnabled: false,
-    registrationEnabled: asBoolean(values.get("registration_enabled"), DEFAULTS.registrationEnabled),
+      registrationEnabled: asBoolean(values.get("registration_enabled"), DEFAULTS.registrationEnabled),
   };
 }
 
@@ -39,7 +36,6 @@ export function publicSiteSettings(settings: SiteSettings) {
   return {
     accessMode: settings.accessMode,
     turnstileEnabled: settings.turnstileEnabled,
-    rememberLoginEnabled: settings.rememberLoginEnabled,
     registrationEnabled: settings.registrationEnabled,
   };
 }
@@ -49,14 +45,13 @@ export async function updateSiteSettings(pool: Pool, input: Partial<SiteSettings
   const next: SiteSettings = {
     accessMode: input.accessMode === "public" || input.accessMode === "access_code" || input.accessMode === "account" ? input.accessMode : current.accessMode,
     turnstileEnabled: false,
-    rememberLoginEnabled: false,
-    registrationEnabled: typeof input.registrationEnabled === "boolean" ? input.registrationEnabled : current.registrationEnabled,
+      registrationEnabled: typeof input.registrationEnabled === "boolean" ? input.registrationEnabled : current.registrationEnabled,
   };
   await pool.query(
     "INSERT INTO site_settings(setting_key, setting_value, updated_at) VALUES ($1,$2,now()) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = now()",
     ["access_mode", next.accessMode],
   );
-  for (const [key, value] of [["turnstile_enabled", next.turnstileEnabled], ["remember_login_enabled", next.rememberLoginEnabled], ["registration_enabled", next.registrationEnabled]] as const) {
+  for (const [key, value] of [["turnstile_enabled", next.turnstileEnabled], ["registration_enabled", next.registrationEnabled]] as const) {
     await pool.query(
       "INSERT INTO site_settings(setting_key, setting_value, updated_at) VALUES ($1,$2,now()) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = now()",
       [key, String(value)],

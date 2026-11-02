@@ -5,7 +5,6 @@ import { encryptSecret, hashSecret, verifySecret, hashToken, requestIp, userAgen
 
 const USER_COOKIE = "__Host-maagarim_user";
 const SESSION_SECONDS = 30 * 60;
-const REMEMBER_SECONDS = 90 * 24 * 60 * 60;
 type User = { id: string; username: string; status: string; created_at: Date; last_login_at: Date | null };
 type UserSession = User & { session_id: string; session_expires_at: Date; remember_me: boolean };
 function cookieOptions(maxAge: number) { return { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/", maxAge: maxAge * 1000 }; }
@@ -33,13 +32,13 @@ async function sessionUser(pool: Pool, req: Request): Promise<UserSession | null
   await pool.query("UPDATE user_sessions SET last_seen_at = now() WHERE id = $1", [user.session_id]); return user;
 }
 
-export async function loginUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; rememberMe?: boolean; turnstileToken?: string }) {
+export async function loginUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; turnstileToken?: string }) {
   if (!(await verifyTurnstile(input.turnstileToken, requestIp(req)))) throw new Error("האימות האנושי נכשל.");
   const result = await pool.query<User & { password_hash: string }>("SELECT id, username, status, created_at, last_login_at, password_hash FROM user_accounts WHERE username_normalized = $1 LIMIT 1", [normalizeUsername(input.username)]);
   const user = result.rows[0];
   if (!user || user.status !== "active" || !(await verifySecret(input.password, user.password_hash))) throw new Error("שם המשתמש או הסיסמה שגויים.");
-  const remember = Boolean(input.rememberMe); const lifetime = remember ? REMEMBER_SECONDS : SESSION_SECONDS; const token = randomBytes(32).toString("base64url");
-  await pool.query("INSERT INTO user_sessions(user_id, token_hash, remember_me, expires_at, ip, user_agent) VALUES($1,$2,$3,now() + ($4 * interval '1 second'),$5,$6)", [user.id, hashToken(token), remember, lifetime, requestIp(req), userAgent(req)]);
+  const lifetime = SESSION_SECONDS; const token = randomBytes(32).toString("base64url");
+  await pool.query("INSERT INTO user_sessions(user_id, token_hash, remember_me, expires_at, ip, user_agent) VALUES($1,$2,$3,now() + ($4 * interval '1 second'),$5,$6)", [user.id, hashToken(token), false, lifetime, requestIp(req), userAgent(req)]);
   await pool.query("UPDATE user_accounts SET last_login_at = now(), updated_at = now() WHERE id = $1", [user.id]); setCookie(res, token, lifetime);
   return { username: user.username, expiresAt: new Date(Date.now() + lifetime * 1000).toISOString() };
 }
@@ -49,7 +48,7 @@ async function activeGrant(pool: Pool, userId: string) {
   const result = await pool.query("SELECT c.id, c.label, c.status, c.expires_at, c.validity_kind, c.validity_seconds, c.max_users, c.max_searches, u.search_count FROM access_code_user_grants g JOIN access_codes c ON c.id = g.access_code_id JOIN user_accounts u ON u.id = g.user_id WHERE g.user_id = $1 AND c.status = 'active' AND c.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND (c.expires_at IS NULL OR c.expires_at > now()) ORDER BY g.activated_at DESC LIMIT 1", [userId]);
   const code = result.rows[0]; if (!code) return null; return { ...code, active: code.max_searches == null || Number(code.search_count) < Number(code.max_searches) };
 }
-export async function getAccount(pool: Pool, req: Request) { const user = await sessionUser(pool, req); if (!user) return { authenticated: false, user: null, access: null }; return { authenticated: true, user: { id: user.id, username: user.username, status: user.status, createdAt: user.created_at, lastLoginAt: user.last_login_at }, session: { expiresAt: user.session_expires_at, rememberMe: user.remember_me }, access: await activeGrant(pool, user.id) }; }
+export async function getAccount(pool: Pool, req: Request) { const user = await sessionUser(pool, req); if (!user) return { authenticated: false, user: null, access: null }; return { authenticated: true, user: { id: user.id, username: user.username, status: user.status, createdAt: user.created_at, lastLoginAt: user.last_login_at }, session: { expiresAt: user.session_expires_at }, access: await activeGrant(pool, user.id) }; }
 
 export async function activateAccessCode(pool: Pool, req: Request, input: { code: string }) {
   const user = await sessionUser(pool, req); if (!user) throw new Error("נדרשת התחברות משתמש.");

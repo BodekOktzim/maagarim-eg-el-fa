@@ -6,7 +6,6 @@ import { encryptSecret, decryptSecret, ensureLinkedAdmin, hashSecret, isLinkedAd
 
 export const USER_COOKIE = "__Host-maagarim_user";
 const SHORT_SESSION_SECONDS = 60 * 60 * 24;
-const REMEMBER_SESSION_SECONDS = 60 * 60 * 24 * 90;
 
 type UserRecord = { id: string; username: string; password_hash: string; password_ciphertext: string | null; status: "active" | "blocked" | "deleted" };
 type UserSession = { id: string; user_id: string; username: string; user_status: UserRecord["status"]; expires_at: Date | null; remember_me: boolean };
@@ -61,23 +60,22 @@ export async function createManagedUser(pool: Pool, input: { username: string; p
   return result.rows[0];
 }
 
-export async function loginUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; rememberMe?: boolean; captchaToken?: string; turnstileEnabled?: boolean; rememberLoginEnabled?: boolean }) {
+export async function loginUser(pool: Pool, req: Request, res: Response, input: { username: string; password: string; captchaToken?: string; turnstileEnabled?: boolean }) {
   if (input.turnstileEnabled !== false && !(await verifyTurnstile(input.captchaToken, requestIp(req)))) throw new Error("האימות האנושי נכשל.");
   const username = cleanUsername(input.username);
   const result = await pool.query<UserRecord>("SELECT id, username, password_hash, password_ciphertext, status FROM user_accounts WHERE lower(username) = lower($1) LIMIT 1", [username]);
   const user = result.rows[0];
   if (!user || user.status !== "active" || !(await verifySecret(input.password, user.password_hash))) throw new Error("שם המשתמש או הסיסמה שגויים.");
-  const rememberMe = input.rememberLoginEnabled === true && Boolean(input.rememberMe);
-  const expiresAt = new Date(Date.now() + (rememberMe ? REMEMBER_SESSION_SECONDS : SHORT_SESSION_SECONDS) * 1000);
+  const expiresAt = new Date(Date.now() + SHORT_SESSION_SECONDS * 1000);
   const token = randomBytes(32).toString("base64url");
-  await pool.query("INSERT INTO user_sessions(user_id, token_hash, expires_at, remember_me, ip, user_agent) VALUES($1,$2,$3,$4,$5,$6)", [user.id, hashToken(token), expiresAt, rememberMe, requestIp(req), userAgent(req)]);
+  await pool.query("INSERT INTO user_sessions(user_id, token_hash, expires_at, remember_me, ip, user_agent) VALUES($1,$2,$3,false,$4,$5)", [user.id, hashToken(token), expiresAt, requestIp(req), userAgent(req)]);
   await pool.query("UPDATE user_accounts SET last_login_at = now(), updated_at = now() WHERE id = $1", [user.id]);
-  await logUserEvent(pool, "user_login", user.id, { rememberMe });
-  setUserCookie(res, token, rememberMe ? REMEMBER_SESSION_SECONDS : SHORT_SESSION_SECONDS);
+  await logUserEvent(pool, "user_login", user.id);
+  setUserCookie(res, token, SHORT_SESSION_SECONDS);
   await ensureLinkedAdmin(pool);
   const isAdmin = await isLinkedAdmin(pool, user.id);
   if (isAdmin) await loginLinkedAdmin(pool, req, res, user.id);
-  return { id: user.id, username: user.username, expiresAt: expiresAt.toISOString(), rememberMe, isAdmin };
+  return { id: user.id, username: user.username, expiresAt: expiresAt.toISOString(), isAdmin };
 }
 
 export async function getUserSession(pool: Pool, req: Request) {

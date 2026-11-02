@@ -1,17 +1,21 @@
 {
-  "buildId": "03d2a0b563d1caa1b43506cc309cbfb48883afc4",
-  "version": "03d2a0b",
-  "builtAt": "2026-11-02T15:54:27.485Z",
-  "appBytes": 1250680,
-  "downloadBytes": 464137,
+  "buildId": "59bb403a62446d4227b40059f53f65c6face9c8c",
+  "version": "59bb403",
+  "builtAt": "2026-11-02T23:22:40.745Z",
+  "appBytes": 1751517,
+  "downloadBytes": 624105,
   "resources": [
     {
-      "url": "/assets/index-BTbPtXzg.css",
-      "bytes": 153233
+      "url": "/assets/index-B2TGC7T3.css",
+      "bytes": 152826
     },
     {
-      "url": "/assets/index-yciaj-fi.js",
-      "bytes": 541055
+      "url": "/assets/index-CBgKe-sd.js",
+      "bytes": 612770
+    },
+    {
+      "url": "/assets/xlsx-DGuHH-KN.js",
+      "bytes": 429493
     },
     {
       "url": "/index-seek/offline-data-manifest.json",
@@ -19,7 +23,7 @@
     },
     {
       "url": "/index.html",
-      "bytes": 368455
+      "bytes": 368491
     },
     {
       "url": "/manifest.webmanifest",

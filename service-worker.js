@@ -1,9 +1,9 @@
-/* OSINT Search release 03d2a0b563d1caa1b43506cc309cbfb48883afc4; user-approved, version-pinned offline shell. */
-const BUILD_ID = "03d2a0b563d1caa1b43506cc309cbfb48883afc4";
+/* OSINT Search release 59bb403a62446d4227b40059f53f65c6face9c8c; user-approved, version-pinned offline shell. */
+const BUILD_ID = "59bb403a62446d4227b40059f53f65c6face9c8c";
 const BASE_PATH = "/";
 const CACHE_NAME = "osint-search-shell-" + BUILD_ID;
 const CACHE_PREFIX = "osint-search-shell-";
-const SHELL_RESOURCES = ["/assets/index-BTbPtXzg.css","/assets/index-yciaj-fi.js","/index-seek/offline-data-manifest.json","/index.html","/manifest.webmanifest","/pwa-icon-192.png","/pwa-icon-512.png"];
+const SHELL_RESOURCES = ["/assets/index-B2TGC7T3.css","/assets/index-CBgKe-sd.js","/assets/xlsx-DGuHH-KN.js","/index-seek/offline-data-manifest.json","/index.html","/manifest.webmanifest","/pwa-icon-192.png","/pwa-icon-512.png"];
 const INDEX_URL = BASE_PATH + "index.html";
 const VERSION_PATH = BASE_PATH + "pwa-version.json";
 
