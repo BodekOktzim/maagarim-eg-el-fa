@@ -314,18 +314,32 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
   const cached = byteRangeCache.get(cacheKey);
   if (cached) return cached;
   const pending = (async () => {
-    const request = (target: string, includeRangeHeader = true, includeCredentials = false) => fetchWithRetry(target, {
-      ...(includeRangeHeader ? { headers: { Range: `bytes=${start}-${endInclusive}` } } : {}),
+    const request = (target: string, rangeStart = start, rangeEnd = endInclusive, includeRangeHeader = true, includeCredentials = false) => fetchWithRetry(target, {
+      ...(includeRangeHeader ? { headers: { Range: `bytes=${rangeStart}-${rangeEnd}` } } : {}),
       cache: "force-cache",
       ...(includeCredentials ? { credentials: "include" as const } : {}),
     }, label);
     const isDatasetRow = url.startsWith(`${MEDIA_ROOT}/datasets/`);
     const shouldProxy = Boolean(PROTECTED_API_ROOT) && isDatasetRow;
     const proxyUrl = shouldProxy ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(url)}&start=${start}&end=${endInclusive}` : url;
-    let response = await request(proxyUrl, !shouldProxy, shouldProxy);
+    let response = await request(proxyUrl, start, endInclusive, !shouldProxy, shouldProxy);
+    if (response.status === 416) {
+      const contentRange = response.headers.get("content-range")?.match(/^bytes\s+\*\/(\d+)$/i);
+      const totalBytes = contentRange ? Number(contentRange[1]) : undefined;
+      if (totalBytes !== undefined && start < totalBytes) {
+        response = await request(proxyUrl, start, Math.min(endInclusive, totalBytes - 1), !shouldProxy, shouldProxy);
+      }
+    }
     if ((response.status === 404 || response.status === 416) && url.startsWith(`${MEDIA_ROOT}/`) && !isDatasetRow) {
       const fallbackUrl = `${RAW_INDEX_ROOT}/${url.slice(MEDIA_ROOT.length + 1)}`;
-      response = await request(fallbackUrl, true, false);
+      response = await request(fallbackUrl, start, endInclusive, true, false);
+      if (response.status === 416) {
+        const contentRange = response.headers.get("content-range")?.match(/^bytes\s+\*\/(\d+)$/i);
+        const totalBytes = contentRange ? Number(contentRange[1]) : undefined;
+        if (totalBytes !== undefined && start < totalBytes) {
+          response = await request(fallbackUrl, start, Math.min(endInclusive, totalBytes - 1), true, false);
+        }
+      }
     }
     if (response.status !== 206) throw new Error(`${label}: שרת הקבצים לא החזיר טווח חלקי (HTTP ${response.status}).`);
     return response.arrayBuffer();

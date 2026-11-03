@@ -19,7 +19,7 @@ import { activateAccessCode, consumeSearch, getUserAccess, loginUser, logoutUser
 import { requireUser, requireUserSearch } from "../linked-account-auth";
 import { getSiteSettings, updateSiteSettings, type AccessMode } from "../site-settings";
 import { isLinkedAdmin } from "../access-auth";
-import { allowedWebOrigin, setRangeResponseHeaders, setWebCors } from "./web-cors";
+import { allowedWebOrigin, clampByteRange, rangeTotalBytes, setRangeResponseHeaders, setWebCors } from "./web-cors";
 
 let settingsPool: import("pg").Pool | null = null;
 const requireSearchAuthorization = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -112,8 +112,23 @@ async function startServer() {
       if (target.protocol !== "https:" || !["media.githubusercontent.com", "raw.githubusercontent.com"].includes(target.hostname)) { res.status(403).json({ error: "מקור נתונים לא מורשה." }); return; }
       const start = Number(req.query.start); const end = Number(req.query.end);
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 8_388_608) { res.status(416).json({ error: "טווח נתונים לא תקין." }); return; }
-      const response = await fetch(target, { headers: { Range: `bytes=${start}-${end}` } });
-      if (!response.ok) { res.status(response.status).end(); return; }
+      let requestedStart = start;
+      let requestedEnd = end;
+      let response = await fetch(target, { headers: { Range: `bytes=${requestedStart}-${requestedEnd}` } });
+      if (response.status === 416) {
+        const totalBytes = rangeTotalBytes(response.headers.get("content-range"));
+        const safeRange = totalBytes === undefined ? null : clampByteRange(start, end, totalBytes);
+        if (safeRange) {
+          requestedStart = safeRange.start;
+          requestedEnd = safeRange.end;
+          response = await fetch(target, { headers: { Range: `bytes=${requestedStart}-${requestedEnd}` } });
+        }
+      }
+      if (!response.ok) {
+        setRangeResponseHeaders(res, response.headers, 0);
+        res.status(response.status).end();
+        return;
+      }
       const body = Buffer.from(await response.arrayBuffer());
       res.status(response.status === 206 ? 206 : 200).setHeader("Content-Type", response.headers.get("content-type") ?? "application/octet-stream");
       setRangeResponseHeaders(res, response.headers, body.byteLength);
