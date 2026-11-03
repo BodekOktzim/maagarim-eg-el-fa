@@ -208,11 +208,14 @@ export async function startOfflineDownload() {
   if (abortController) return;
   const manifest = await getOfflineManifest();
   await putStoredManifest(manifest);
+  if (navigator.storage?.persist) {
+    try { await navigator.storage.persist(); } catch { /* The browser may deny persistence; the quota check below remains authoritative. */ }
+  }
   const estimate = await navigator.storage?.estimate?.();
   const available = estimate?.quota && estimate.usage !== undefined ? estimate.quota - estimate.usage : undefined;
   const existing = await calculateDownloaded(manifest);
   if (available !== undefined && available < manifest.totalBytes - existing) {
-    throw new Error(`אין מספיק מקום פנוי. נדרשים לפחות ${formatBytes(manifest.totalBytes - existing)} נוספים.`);
+    throw new Error(`הדפדפן הקצה רק ${formatBytes(available)} לאתר, אבל נדרשים ${formatBytes(manifest.totalBytes - existing)}. אשרו אחסון לאתר או פנו מקום בכונן ונסו שוב.`);
   }
   abortController = new AbortController();
   emit({ status: "downloading", totalBytes: manifest.totalBytes, downloadedBytes: existing, error: undefined });

@@ -256,8 +256,10 @@ export default function PwaControls() {
       setCanPromptInstall(false);
       if (choice.outcome === "accepted") {
         setInstallDialogOpen(false);
-        setDownloadProgress({ completed: 0, total: 0 });
         window.setTimeout(cacheCurrentRelease, 0);
+        setOfflineDialogOpen(true);
+        setStatusMessage("האפליקציה הותקנה. מתחיל עכשיו לשמור את כל המאגרים לחיפוש מקומי.");
+        window.setTimeout(() => void beginOfflineDownload(), 250);
       }
     } catch {
       setStatusMessage("הדפדפן לא פתח את בקשת ההתקנה. נסו דרך תפריט הדפדפן.");
@@ -341,7 +343,7 @@ export default function PwaControls() {
           <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום פנוי משוער</span><strong>{formatOfflineBytes(availableBytes)}</strong></p>
         </div>
         {offlineState.status === "downloading" && <div className="space-y-2" role="status"><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-300 transition-all" style={{ width: `${offlineState.totalBytes ? Math.min(100, offlineState.downloadedBytes / offlineState.totalBytes * 100) : 4}%` }}/></div><p className="text-xs text-white/70">מוריד {formatOfflineBytes(offlineState.downloadedBytes)} מתוך {formatOfflineBytes(offlineState.totalBytes)}{offlineState.currentPath ? ` · ${offlineState.currentPath}` : ""}</p></div>}
-        {offlineState.status === "complete" ? <p className="rounded-lg bg-emerald-400/10 p-3 text-sm leading-6 text-emerald-100">כל הנתונים נשמרו. החיפוש יכול לעבוד ללא חיבור לאינטרנט כל עוד הנתונים המקומיים לא נמחקו.</p> : <p className="text-xs leading-6 text-white/55">מי שלא יוריד את הנתונים יוכל להתקין את האפליקציה, אבל החיפוש ימשיך להיות תלוי באתר ובחיבור לאינטרנט. ההורדה היא בערך 7.1GB וניתנת להשהיה ולהמשך.</p>}
+        {offlineState.status === "complete" ? <p className="rounded-lg bg-emerald-400/10 p-3 text-sm leading-6 text-emerald-100">כל הנתונים נשמרו. החיפוש המקומי יכול לעבוד ללא חיבור לאינטרנט כל עוד הנתונים המקומיים לא נמחקו.</p> : <p className="text-xs leading-6 text-white/55">ההורדה כוללת את כל קובצי המקור והאינדקסים הדרושים לחיפוש המקומי. היא בערך {formatOfflineBytes(offlineState.totalBytes)} וניתנת להשהיה ולהמשך. חיפוש מספר באינטרנט ימשיך לדרוש חיבור לאינטרנט.</p>}
         {offlineState.error && <p role="alert" className="rounded-lg bg-rose-400/10 p-3 text-sm text-rose-200">{offlineState.error}</p>}
         <DialogFooter className="gap-2 sm:justify-start">
           {offlineState.status === "complete" ? <button type="button" onClick={() => void deleteOfflineData()} className="min-h-11 rounded-xl border border-rose-200/20 px-4 text-rose-100 hover:bg-rose-400/10">מחק נתונים מהמכשיר</button> : offlineState.status === "downloading" ? <button type="button" onClick={pauseOfflineDownload} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-200 px-4 font-semibold text-[#143b2a] hover:bg-emerald-100">השהה הורדה</button> : <button type="button" onClick={() => void beginOfflineDownload()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-200 px-4 font-semibold text-[#143b2a] hover:bg-emerald-100">{offlineState.downloadedBytes ? "המשך הורדה" : "התחל הורדה"}</button>}
@@ -354,15 +356,16 @@ export default function PwaControls() {
       <DialogContent dir="rtl" className="max-w-md border-white/10 bg-[#20102b] text-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl"><Smartphone className="text-fuchsia-200"/>התקנת OSINT Search</DialogTitle>
-          <DialogDescription className="text-white/65">לפני בקשת ההתקנה, הנה גודל קובצי האפליקציה שיישמרו מקומית.</DialogDescription>
+        <DialogDescription className="text-white/65">ההתקנה תשמור את קוד האפליקציה, ולאחר אישור ההתקנה תתחיל הורדת snapshot מלא של המאגרים והאינדקסים לחיפוש מקומי.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3 rounded-xl border border-white/10 bg-black/15 p-4 text-sm">
           <p className="flex items-center justify-between gap-4"><span className="text-white/60">הורדה מוערכת (נתונים דחוסים)</span><strong>{formatBytes(downloadBytes)}</strong></p>
-          <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום שיידרש לאחר התקנה</span><strong>{formatBytes(installBytes)}</strong></p>
+          <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום לקוד האפליקציה</span><strong>{formatBytes(installBytes)}</strong></p>
+          <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום לנתוני החיפוש המקומיים</span><strong>{formatOfflineBytes(offlineState.totalBytes)}</strong></p>
           <p className="flex items-center justify-between gap-4"><span className="text-white/60">מקום פנוי לאתר באחסון הדפדפן</span><strong>{formatBytes(availableBytes)}</strong></p>
           {usedPercent !== null && <p className="flex items-center justify-between gap-4"><span className="text-white/60">שימוש נוכחי באחסון הדפדפן</span><strong>{usedPercent}%</strong></p>}
         </div>
-        <p className="text-xs leading-6 text-white/55">ההתקנה שומרת את קובצי הממשק והגרסה הנוכחית. מאגרי החיפוש עצמם נשארים מקוונים ואינם כלולים בהורדה. מחיקת נתוני האתר/הדפדפן או פינוי אוטומטי של אחסון עלולים להסיר את העותק המקומי.</p>
+        <p className="text-xs leading-6 text-white/55">לאחר אישור ההתקנה תתחיל הורדה מדורגת של כל מאגרי החיפוש והאינדקסים. אפשר להשהות ולהמשיך. מחיקת נתוני האתר/הדפדפן או פינוי אוטומטי של אחסון עלולים להסיר את העותק המקומי.</p>
         <DialogFooter className="gap-2 sm:justify-start">
           <button type="button" onClick={() => void confirmInstall()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#f2a9d2] px-4 font-semibold text-[#30123e] hover:bg-[#f7c2e0]"><Download size={16}/>{canPromptInstall ? "המשך להתקנה" : "הצג הוראות התקנה"}</button>
           <button type="button" onClick={() => setInstallDialogOpen(false)} className="min-h-11 rounded-xl border border-white/15 px-4 text-white/75 hover:bg-white/5">ביטול</button>
@@ -383,7 +386,7 @@ export default function PwaControls() {
         </ol>
         <p className="text-xs leading-6 text-white/55">לאחר ההתקנה, פתחו את האפליקציה והשאירו אותה פתוחה עד שיופיע שהממשק נשמר. בדפדפנים שאינם תומכים בהתקנה, אפשר להמשיך להשתמש באתר כרגיל.</p>
         <DialogFooter>
-          <button type="button" onClick={() => { setManualInstructionsOpen(false); setInstallDialogOpen(false); cacheCurrentRelease(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#f2a9d2] px-4 font-semibold text-[#30123e] hover:bg-[#f7c2e0]">הבנתי, סיימתי התקנה</button>
+          <button type="button" onClick={() => { setManualInstructionsOpen(false); setInstallDialogOpen(false); void cacheCurrentRelease(); setOfflineDialogOpen(true); setStatusMessage("מתחיל עכשיו לשמור את כל המאגרים לחיפוש מקומי."); window.setTimeout(() => void beginOfflineDownload(), 250); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#f2a9d2] px-4 font-semibold text-[#30123e] hover:bg-[#f7c2e0]">הבנתי, סיימתי התקנה</button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
