@@ -21,6 +21,23 @@ import { getSiteSettings, updateSiteSettings, type AccessMode } from "../site-se
 import { isLinkedAdmin } from "../access-auth";
 
 let settingsPool: import("pg").Pool | null = null;
+const DEFAULT_WEB_ORIGIN = "https://bodekoktzim.github.io";
+function allowedWebOrigin(requestOrigin: string | undefined) {
+  if (!requestOrigin) return "";
+  const configured = process.env.WEB_APP_ALLOWED_ORIGIN || DEFAULT_WEB_ORIGIN;
+  try {
+    return new URL(requestOrigin).origin === new URL(configured).origin ? requestOrigin : "";
+  } catch {
+    return requestOrigin === configured ? requestOrigin : "";
+  }
+}
+function setWebCors(req: express.Request, res: express.Response) {
+  const origin = allowedWebOrigin(req.headers.origin);
+  if (!origin) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Vary", "Origin");
+}
 const requireSearchAuthorization = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     if (!settingsPool) return next();
@@ -59,12 +76,7 @@ async function startServer() {
   app.get("/", (_req, res) => { res.status(200).json({ ok: true, service: "maagarim-web-search-api" }); });
   app.get("/healthz", (_req, res) => { res.status(200).json({ ok: true }); });
   app.get("/api/public-config", async (req, res) => {
-    const allowedOrigin = process.env.WEB_APP_ALLOWED_ORIGIN || "";
-    if (allowedOrigin && req.headers.origin === allowedOrigin) {
-      res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-      res.setHeader("Vary", "Origin");
-    }
+    setWebCors(req, res);
     res.setHeader("Cache-Control", "no-store");
     const settings = settingsPool ? await getSiteSettings(settingsPool) : { accessMode: "public" as const, turnstileEnabled: false, registrationEnabled: false };
     res.json({ turnstileSiteKey: process.env.VITE_TURNSTILE_SITE_KEY ?? "", ...settings });
@@ -78,10 +90,8 @@ async function startServer() {
     const pool = persisted.pool;
     const siteSettings = () => getSiteSettings(pool);
     app.use(["/api/access", "/api/account", "/api/admin", "/api/protected-range"], (req, res, next) => {
-      const allowedOrigin = process.env.WEB_APP_ALLOWED_ORIGIN || "";
-      if (allowedOrigin && req.headers.origin === allowedOrigin) {
-        res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
-        res.setHeader("Access-Control-Allow-Credentials", "true");
+      if (allowedWebOrigin(req.headers.origin)) {
+        setWebCors(req, res);
         res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, X-Admin-Bootstrap-Secret");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
       }
