@@ -19,25 +19,9 @@ import { activateAccessCode, consumeSearch, getUserAccess, loginUser, logoutUser
 import { requireUser, requireUserSearch } from "../linked-account-auth";
 import { getSiteSettings, updateSiteSettings, type AccessMode } from "../site-settings";
 import { isLinkedAdmin } from "../access-auth";
+import { allowedWebOrigin, setRangeResponseHeaders, setWebCors } from "./web-cors";
 
 let settingsPool: import("pg").Pool | null = null;
-const DEFAULT_WEB_ORIGIN = "https://bodekoktzim.github.io";
-function allowedWebOrigin(requestOrigin: string | undefined) {
-  if (!requestOrigin) return "";
-  const configured = process.env.WEB_APP_ALLOWED_ORIGIN || DEFAULT_WEB_ORIGIN;
-  try {
-    return new URL(requestOrigin).origin === new URL(configured).origin ? requestOrigin : "";
-  } catch {
-    return requestOrigin === configured ? requestOrigin : "";
-  }
-}
-function setWebCors(req: express.Request, res: express.Response) {
-  const origin = allowedWebOrigin(req.headers.origin);
-  if (!origin) return;
-  res.setHeader("Access-Control-Allow-Origin", origin);
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Vary", "Origin");
-}
 const requireSearchAuthorization = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
   try {
     if (!settingsPool) return next();
@@ -90,11 +74,7 @@ async function startServer() {
     const pool = persisted.pool;
     const siteSettings = () => getSiteSettings(pool);
     app.use(["/api/access", "/api/account", "/api/admin", "/api/protected-range"], (req, res, next) => {
-      if (allowedWebOrigin(req.headers.origin)) {
-        setWebCors(req, res);
-        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, X-Admin-Bootstrap-Secret");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      }
+      setWebCors(req, res);
       if (req.method === "OPTIONS") { res.status(204).end(); return; }
       next();
     });
@@ -134,9 +114,11 @@ async function startServer() {
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 8_388_608) { res.status(416).json({ error: "טווח נתונים לא תקין." }); return; }
       const response = await fetch(target, { headers: { Range: `bytes=${start}-${end}` } });
       if (!response.ok) { res.status(response.status).end(); return; }
+      const body = Buffer.from(await response.arrayBuffer());
       res.status(response.status === 206 ? 206 : 200).setHeader("Content-Type", response.headers.get("content-type") ?? "application/octet-stream");
+      setRangeResponseHeaders(res, response.headers, body.byteLength);
       res.setHeader("Cache-Control", "private, max-age=300");
-      res.send(Buffer.from(await response.arrayBuffer()));
+      res.send(body);
     });
   } else {
     app.all(["/api/access/*", "/api/admin/*", "/api/protected-range"], (_req, res) => res.status(503).json({ error: "מערכת ההרשאות אינה מחוברת למסד נתונים." }));
