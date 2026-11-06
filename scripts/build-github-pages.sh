@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 BUILD_ID="${GITHUB_SHA:-$(git rev-parse HEAD)}"
-API_BASE_URL="${VITE_API_BASE_URL:-https://maagarim-web-search-api.onrender.com}"
+API_BASE_URL="${VITE_API_BASE_URL:-https://maagarim-web-search-api-k902.onrender.com}"
 node scripts/build-offline-data-manifest.mjs "$BUILD_ID"
 GITHUB_PAGES=true VITE_BUILD_ID="$BUILD_ID" VITE_API_BASE_URL="$API_BASE_URL" pnpm exec vite build
 
