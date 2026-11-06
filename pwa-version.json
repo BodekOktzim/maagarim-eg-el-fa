@@ -1,40 +1,36 @@
 {
-  "buildId": "bb287b657770ec5453c3e324261ce0610f00abd3",
-  "version": "bb287b6",
-  "builtAt": "2026-11-03T22:25:54.221Z",
-  "appBytes": 1752919,
-  "downloadBytes": 624434,
+  "buildId": "52a8dc5505be633f1b7a68e274a81ece7a5db035",
+  "version": "52a8dc5",
+  "builtAt": "2026-11-06T11:00:40.297Z",
+  "appBytes": 1250298,
+  "downloadBytes": 464107,
   "resources": [
     {
-      "url": "/maagarim-eg-el-fa/assets/index-B2TGC7T3.css",
+      "url": "/assets/index-B2TGC7T3.css",
       "bytes": 152826
     },
     {
-      "url": "/maagarim-eg-el-fa/assets/index-u3aP50yu.js",
-      "bytes": 614104
+      "url": "/assets/index-DPiWFLY9.js",
+      "bytes": 541080
     },
     {
-      "url": "/maagarim-eg-el-fa/assets/xlsx-DGuHH-KN.js",
-      "bytes": 429493
-    },
-    {
-      "url": "/maagarim-eg-el-fa/index-seek/offline-data-manifest.json",
+      "url": "/index-seek/offline-data-manifest.json",
       "bytes": 13709
     },
     {
-      "url": "/maagarim-eg-el-fa/index.html",
-      "bytes": 368491
+      "url": "/index.html",
+      "bytes": 368455
     },
     {
-      "url": "/maagarim-eg-el-fa/manifest.webmanifest",
-      "bytes": 732
+      "url": "/manifest.webmanifest",
+      "bytes": 664
     },
     {
-      "url": "/maagarim-eg-el-fa/pwa-icon-192.png",
+      "url": "/pwa-icon-192.png",
       "bytes": 21459
     },
     {
-      "url": "/maagarim-eg-el-fa/pwa-icon-512.png",
+      "url": "/pwa-icon-512.png",
       "bytes": 152105
     }
   ]

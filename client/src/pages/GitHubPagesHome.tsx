@@ -17,7 +17,7 @@ import {
 } from "@/lib/full-dataset-search";
 import { normalizeWebPhonePayload, type PhoneIntelligence, type WebEntityGroup, type WebSearchResult } from "@/lib/web-phone-contract";
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api.onrender.com").replace(/\/$/, "");
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "https://maagarim-web-search-api-k902.onrender.com").replace(/\/$/, "");
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const normalizeId = (value: string) => value.replace(/\D/g, "");
 const SOURCE_OPTIONS: { id: SourceFilter; label: string }[] = [
