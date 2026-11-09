@@ -54,32 +54,89 @@ type DetailPlacement = "below" | "left" | "right";
 const unique = (values: string[]) => Array.from(new Set(values));
 const svgEntities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" };
 const escapeSvg = (value: string) => value.replace(/[&<>"']/g, (character) => svgEntities[character] ?? character);
-function downloadFamilyTreeImage(data: FamilyTreeData, centralId: string) {
-  const people = unique([centralId, ...data.people.map((person) => person.id)]).map((id) => data.people.find((person) => person.id === id)).filter((person): person is TreePerson => Boolean(person));
+type ExportPosition = { x: number; y: number; relation: string };
+
+function buildExportPositions(data: FamilyTreeData, centralId: string) {
+  const people = new Map(data.people.map((person) => [person.id, person]));
+  const relationships = data.relationships;
+  const parents = new Map<string, string[]>();
+  const children = new Map<string, string[]>();
+  const siblings = new Map<string, string[]>();
+  for (const relationship of relationships) {
+    if (relationship.type === "PARENT") {
+      parents.set(relationship.personAId, [...(parents.get(relationship.personAId) ?? []), relationship.personBId]);
+      children.set(relationship.personBId, [...(children.get(relationship.personBId) ?? []), relationship.personAId]);
+    } else if (relationship.type === "CHILD") {
+      children.set(relationship.personAId, [...(children.get(relationship.personAId) ?? []), relationship.personBId]);
+    } else if (relationship.type === "SIBLING") {
+      siblings.set(relationship.personAId, [...(siblings.get(relationship.personAId) ?? []), relationship.personBId]);
+      siblings.set(relationship.personBId, [...(siblings.get(relationship.personBId) ?? []), relationship.personAId]);
+    }
+  }
+  const centralParents = unique(parents.get(centralId) ?? []);
+  const fatherId = centralParents[0];
+  const motherId = centralParents[1];
+  const spouseId = people.get(centralId)?.spouseId ?? data.people.find((person) => person.spouseId === centralId)?.id;
+  const positions = new Map<string, ExportPosition>();
   const cardWidth = 250;
   const cardHeight = 116;
-  const gapX = 24;
-  const gapY = 34;
-  const columns = 4;
-  const padding = 44;
-  const rows = Math.max(1, Math.ceil(people.length / columns));
-  const width = padding * 2 + columns * cardWidth + (columns - 1) * gapX;
-  const height = padding * 2 + rows * cardHeight + (rows - 1) * gapY + 50;
-  const positions = new Map(people.map((person, index) => [person.id, { x: padding + (index % columns) * (cardWidth + gapX), y: padding + Math.floor(index / columns) * (cardHeight + gapY) }]));
+  const gap = 28;
+  const centerX = 1125;
+  const putRow = (ids: string[], y: number, relation: string, anchorX = centerX) => {
+    const visible = unique(ids).filter((id) => people.has(id) && !positions.has(id));
+    const start = anchorX - ((visible.length - 1) * (cardWidth + gap)) / 2;
+    visible.forEach((id, index) => positions.set(id, { x: Math.round(start + index * (cardWidth + gap)), y, relation }));
+  };
+
+  putRow([...(fatherId ? parents.get(fatherId) ?? [] : []), ...(motherId ? parents.get(motherId) ?? [] : [])], 86, "סבא/סבתא", centerX);
+  putRow([...(fatherId ? siblings.get(fatherId) ?? [] : [])], 350, "דוד/ה · צד האב", 330);
+  putRow([...(motherId ? siblings.get(motherId) ?? [] : [])], 350, "דוד/ה · צד האם", 1920);
+  putRow([fatherId, motherId].filter((id): id is string => Boolean(id)), 350, "הורה", centerX);
+  putRow([...(fatherId ? (siblings.get(fatherId) ?? []).flatMap((id) => children.get(id) ?? []) : [])], 615, "בן/בת דוד · צד האב", 330);
+  putRow([...(motherId ? (siblings.get(motherId) ?? []).flatMap((id) => children.get(id) ?? []) : [])], 615, "בן/בת דוד · צד האם", 1920);
+  putRow(unique(siblings.get(centralId) ?? []), 615, "אח/ות", centerX - 430);
+  putRow([centralId, ...(spouseId ? [spouseId] : [])], 615, "האדם המרכזי", centerX);
+  if (spouseId && positions.has(spouseId)) positions.set(spouseId, { ...positions.get(spouseId)!, relation: "בן/בת זוג" });
+  putRow(children.get(centralId) ?? [], 900, "ילד/ה", centerX);
+  putRow(spouseId ? (children.get(spouseId) ?? []) : [], 900, "ילד/ה", centerX);
+  return { people, positions, cardWidth, cardHeight, width: 2250, height: 1120 };
+}
+
+async function downloadFamilyTreeImage(data: FamilyTreeData, centralId: string) {
+  const layout = buildExportPositions(data, centralId);
+  const { people, positions, cardWidth, cardHeight, width, height } = layout;
   const lines = data.relationships.flatMap((relationship) => {
     const from = positions.get(relationship.personAId); const to = positions.get(relationship.personBId);
     if (!from || !to) return [];
-    return [`<line x1="${from.x + cardWidth / 2}" y1="${from.y + cardHeight / 2}" x2="${to.x + cardWidth / 2}" y2="${to.y + cardHeight / 2}" stroke="#d96b9b" stroke-opacity=".55" stroke-width="2"/>`];
+    return [`<path d="M ${from.x + cardWidth / 2} ${from.y + cardHeight / 2} C ${from.x + cardWidth / 2} ${(from.y + to.y) / 2}, ${to.x + cardWidth / 2} ${(from.y + to.y) / 2}, ${to.x + cardWidth / 2} ${to.y + cardHeight / 2}" fill="none" stroke="#d96b9b" stroke-opacity=".62" stroke-width="3"/>`];
   }).join("");
-  const cards = people.map((person) => {
-    const position = positions.get(person.id)!; const central = person.id === centralId;
-    const relation = central ? "האדם המרכזי" : data.relationships.find((item) => item.personAId === centralId && item.personBId === person.id)?.type === "PARENT" ? "הורה" : data.relationships.find((item) => item.personBId === centralId && item.personAId === person.id)?.type === "CHILD" ? "ילד/ה" : "קשר משפחתי";
-    return `<g><rect x="${position.x}" y="${position.y}" width="${cardWidth}" height="${cardHeight}" rx="18" fill="${central ? "#5b1f43" : "#281420"}" stroke="${central ? "#ff5b9b" : "#b84f80"}" stroke-width="${central ? 3 : 1.5}"/><text x="${position.x + cardWidth - 16}" y="${position.y + 25}" text-anchor="end" fill="#ffb6d3" font-size="13" font-family="Arial, sans-serif">${escapeSvg(relation)}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 53}" text-anchor="end" fill="#ffffff" font-size="17" font-weight="700" font-family="Arial, sans-serif">${escapeSvg(person.fullName || "ללא שם")}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 80}" text-anchor="end" fill="#f4c5d8" font-size="12" font-family="Arial, sans-serif">ת״ז: ${escapeSvg(person.nationalId ?? "לא נמצא")}</text><text x="${position.x + cardWidth - 16}" y="${position.y + 101}" text-anchor="end" fill="#d4a9bb" font-size="11" font-family="Arial, sans-serif">${escapeSvg(person.sourceNames?.join(" · ") || "מקור לא נמצא")}</text></g>`;
+  const cards = Array.from(positions.entries()).map(([id, position]) => {
+    const person = people.get(id)!; const central = id === centralId;
+    const x = position.x; const y = position.y; const right = x + cardWidth - 18;
+    return `<g><rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="20" fill="${central ? "#5b1f43" : "#281420"}" stroke="${central ? "#ff5b9b" : "#b84f80"}" stroke-width="${central ? 4 : 2}"/><text x="${right}" y="${y + 25}" text-anchor="end" fill="#ffb6d3" font-size="13" font-family="Arial, sans-serif">${escapeSvg(position.relation)}</text><text x="${right}" y="${y + 54}" text-anchor="end" fill="#ffffff" font-size="18" font-weight="700" font-family="Arial, sans-serif">${escapeSvg(person.fullName || "ללא שם")}</text><text x="${right}" y="${y + 81}" text-anchor="end" fill="#f4c5d8" font-size="12" font-family="Arial, sans-serif">ת״ז: ${escapeSvg(person.nationalId ?? "לא נמצא")}</text><text x="${right}" y="${y + 103}" text-anchor="end" fill="#d4a9bb" font-size="11" font-family="Arial, sans-serif">${escapeSvg(person.sourceNames?.join(" · ") || "מקור לא נמצא")}</text></g>`;
   }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="#150d14"/><text x="${width - padding}" y="${height - 18}" text-anchor="end" fill="#ffb6d3" font-size="16" font-family="Arial, sans-serif">מפת קשרים משפחתיים · ${escapeSvg(people.find((person) => person.id === centralId)?.fullName ?? centralId)}</text>${lines}${cards}</svg>`;
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
-  const link = document.createElement("a"); link.href = url; link.download = `family-tree-${centralId}.svg`; link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const title = people.get(centralId)?.fullName ?? centralId;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" direction="rtl"><rect width="100%" height="100%" fill="#150d14"/><text x="${width - 54}" y="${height - 34}" text-anchor="end" fill="#ffb6d3" font-size="20" font-family="Arial, sans-serif">מפת קשרים משפחתיים · ${escapeSvg(title)}</text>${lines}${cards}</svg>`;
+  const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const svgUrl = URL.createObjectURL(svgBlob);
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = svgUrl;
+    await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error("image_load_failed")); });
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = width * scale; canvas.height = height * scale;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("canvas_unavailable");
+    context.fillStyle = "#150d14"; context.fillRect(0, 0, canvas.width, canvas.height); context.scale(scale, scale); context.drawImage(image, 0, 0, width, height);
+    const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("png_export_failed")), "image/png"));
+    const pngUrl = URL.createObjectURL(png);
+    const link = document.createElement("a"); link.href = pngUrl; link.download = `family-tree-${centralId}.png`; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(pngUrl), 3000);
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
 }
 
 function PersonCard({
