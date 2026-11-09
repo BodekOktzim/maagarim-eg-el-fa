@@ -9,6 +9,7 @@ const RAW_INDEX_ROOT = "https://raw.githubusercontent.com/BodekOktzim/maagarim-e
 const INDEX_ROOT = MEDIA_ROOT;
 const SEEK_ROOT = `${import.meta.env.BASE_URL}index-seek`;
 const PROTECTED_API_ROOT = import.meta.env.MODE === "test" ? null : (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+let publicAccessModePromise: Promise<boolean> | undefined;
 
 type SourceKey = "agron2006" | "elector" | "facebook";
 
@@ -294,6 +295,20 @@ async function fetchWithRetry(target: string, init: RequestInit | undefined, lab
   throw new Error(`${label}: טעינת הנתונים נכשלה זמנית. נסו שוב בעוד כמה שניות.`, { cause: lastError });
 }
 
+async function isPublicSearchMode() {
+  if (!PROTECTED_API_ROOT) return false;
+  if (!publicAccessModePromise) {
+    publicAccessModePromise = fetchWithRetry(`${PROTECTED_API_ROOT}/api/public-config`, { cache: "no-store" }, "public-config")
+      .then(async (response) => {
+        if (!response.ok) return false;
+        const config = await response.json() as { accessMode?: string };
+        return config.accessMode === "public";
+      })
+      .catch(() => false);
+  }
+  return publicAccessModePromise;
+}
+
 async function getExtensionManifest(): Promise<ExtensionManifest> {
   if (!extensionManifestPromise) {
     extensionManifestPromise = fetchWithRetry(`${SEEK_ROOT}/extensions-manifest.json`, { cache: "no-cache" }, "extensions-manifest.json").then(async (response) => {
@@ -320,7 +335,7 @@ async function getByteRange(url: string, start: number, endInclusive: number, la
       ...(includeCredentials ? { credentials: "include" as const } : {}),
     }, label);
     const isDatasetRow = url.startsWith(`${MEDIA_ROOT}/datasets/`);
-    const shouldProxy = Boolean(PROTECTED_API_ROOT) && isDatasetRow;
+    const shouldProxy = Boolean(PROTECTED_API_ROOT) && isDatasetRow && !(await isPublicSearchMode());
     const proxyUrl = shouldProxy ? `${PROTECTED_API_ROOT}/api/protected-range?url=${encodeURIComponent(url)}&start=${start}&end=${endInclusive}` : url;
     let response = await request(proxyUrl, start, endInclusive, !shouldProxy, shouldProxy);
     if (response.status === 416) {
